@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package server;
+
+enum ServiceStats {
+    STARTING = 0;
+    RUN = 1;
+    STOP = 2;
+}
+
+message LoadReporterRequest {
+}
+
+message LoadReporterResponse{
+    int64   curLoad = 1;
+    ServiceStats state = 2;
+
+}
+
+service LoadReporterService {
+    rpc LoadReporter(LoadReporterRequest) returns (LoadReporterResponse);
+}
