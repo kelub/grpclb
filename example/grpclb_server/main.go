@@ -5,22 +5,14 @@ import (
 	"fmt"
 	"github.com/Sirupsen/logrus"
 	"google.golang.org/grpc"
+	"kelub/grpclb/example"
 	lr "kelub/grpclb/load_reporter"
 	serverpb "kelub/grpclb/pb/server"
 	"net"
 	"sync"
 )
 
-type Options struct {
-	ServerName string `flag:"server_name"`
-	RPCAddress string `flag:"rpc-address"`
-	RPCPort    string `flag:"rpc-port"`
-	//ConsulAddress string `flag:"tcp-port"`
-	//HealthPort    int    `flag:"HealthPort"`
-	//ProfPort      int    `flag:"prof_port"`
-}
-
-var opt Options
+var opt example.Options
 
 func main() {
 	flag.Parse()

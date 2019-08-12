@@ -26,8 +26,12 @@ type LoadBlancerReporter struct {
 
 func (r *LoadBlancerReporter) LoadReporter(ctx context.Context, request *serverpb.LoadReporterRequest) (
 	response *serverpb.LoadReporterResponse, err error) {
+	logEntry := logrus.WithFields(logrus.Fields{
+		"func_name": "LoadReporter",
+	})
 	curLoad := r.svrLoad.GetCurLoad()
 	serviceState := r.svrLoad.GetState()
+	logEntry.Infof("Load:[%d] State:[%s]",curLoad,serverpb.ServiceStats_name[int32(serviceState)])
 	response = &serverpb.LoadReporterResponse{
 		CurLoad: curLoad,
 		State:   serviceState,
