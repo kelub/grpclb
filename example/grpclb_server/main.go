@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"github.com/Sirupsen/logrus"
@@ -10,7 +11,10 @@ import (
 	serverpb "kelub/grpclb/pb/server"
 	"net"
 	"sync"
+	"sync/atomic"
 )
+
+var runningRPC int64 = 0
 
 var opt example.Options
 
@@ -90,4 +94,11 @@ func NewLoadMgr() *LoadMgr {
 		curLoad: 0,
 		state:   serverpb.ServiceStats_STARTING,
 	}
+}
+
+func GrpcInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+	atomic.AddInt64(&runningRPC,1)
+	resp,err := handler(ctx, req)
+
+	return resp, err
 }

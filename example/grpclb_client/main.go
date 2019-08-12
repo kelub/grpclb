@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -9,7 +10,6 @@ import (
 	"kelub/grpclb/example"
 	serverpb "kelub/grpclb/pb/server"
 	"os"
-	"bufio"
 	"time"
 )
 
@@ -25,15 +25,15 @@ func main() {
 	flag.Parse()
 	cc := GetRPCClient(opt.RPCAddress, opt.RPCPort)
 	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan(){
+	for scanner.Scan() {
 		fmt.Println(scanner.Text())
-		r ,err := GetLoad(cc)
-		if err != nil{
+		r, err := GetLoad(cc)
+		if err != nil {
 			continue
 		}
 		load := r.GetCurLoad()
 		state := r.GetState()
-		logrus.Infof("load:[%d],state:[%s]",load,serverpb.ServiceStats_name[int32(state)])
+		logrus.Infof("load:[%d],state:[%s]", load, serverpb.ServiceStats_name[int32(state)])
 	}
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintln(os.Stderr, "reading standard input:", err)
@@ -41,13 +41,13 @@ func main() {
 
 }
 
-func GetRPCClient(addr string, port string) serverpb.LoadReporterServiceClient{
+func GetRPCClient(addr string, port string) serverpb.LoadReporterServiceClient {
 	logEntry := logrus.WithFields(logrus.Fields{
 		"func_name": "RunRPCClient",
 		"addr":      addr,
 		"port":      port,
 	})
-	conn, err := grpc.Dial(fmt.Sprintf("%s:%s",addr,port), grpc.WithInsecure())
+	conn, err := grpc.Dial(fmt.Sprintf("%s:%s", addr, port), grpc.WithInsecure())
 	if err != nil {
 		logEntry.Error("did not connect ", err)
 	}
@@ -55,17 +55,17 @@ func GetRPCClient(addr string, port string) serverpb.LoadReporterServiceClient{
 	return cc
 }
 
-func GetLoad(cc serverpb.LoadReporterServiceClient)(r *serverpb.LoadReporterResponse,err error){
+func GetLoad(cc serverpb.LoadReporterServiceClient) (r *serverpb.LoadReporterResponse, err error) {
 	logEntry := logrus.WithFields(logrus.Fields{
 		"func_name": "GetLoad",
 	})
-	ctx, cancel := context.WithTimeout(context.Background(),time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	LRRRequest := &serverpb.LoadReporterRequest{}
-	r,err = cc.LoadReporter(ctx,LRRRequest)
-	if err != nil{
+	r, err = cc.LoadReporter(ctx, LRRRequest)
+	if err != nil {
 		logEntry.Errorf("could not verify: %v", err)
 		return nil, err
 	}
-	return r ,nil
+	return r, nil
 }

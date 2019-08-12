@@ -31,7 +31,7 @@ func (r *LoadBlancerReporter) LoadReporter(ctx context.Context, request *serverp
 	})
 	curLoad := r.svrLoad.GetCurLoad()
 	serviceState := r.svrLoad.GetState()
-	logEntry.Infof("Load:[%d] State:[%s]",curLoad,serverpb.ServiceStats_name[int32(serviceState)])
+	logEntry.Infof("Load:[%d] State:[%s]", curLoad, serverpb.ServiceStats_name[int32(serviceState)])
 	response = &serverpb.LoadReporterResponse{
 		CurLoad: curLoad,
 		State:   serviceState,
