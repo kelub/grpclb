@@ -11,7 +11,6 @@ import (
 	serverpb "kelub/grpclb/pb/server"
 	"net"
 	"sync"
-	"sync/atomic"
 )
 
 var runningRPC int64 = 0
@@ -20,7 +19,9 @@ var opt example.Options
 
 func main() {
 	flag.Parse()
-	s := grpc.NewServer()
+	rpcOption := make([]grpc.ServerOption, 0)
+	rpcOption = append(rpcOption,grpc.UnaryInterceptor(GrpcInterceptor))
+	s := grpc.NewServer(rpcOption...)
 	lr.RegisterLBReporter(s, &lr.LoadBlancerReporter{}, NewLoadMgr())
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -73,16 +74,16 @@ type LoadMgr struct {
 	state   serverpb.ServiceStats
 }
 
-func (l *LoadMgr) SetCurLoad(int64) {
-	l.curLoad = 100
+func (l *LoadMgr) SetCurLoad(curLoad int64) {
+	l.curLoad = curLoad
 }
 
 func (l *LoadMgr) GetCurLoad() int64 {
 	return l.curLoad
 }
 
-func (l *LoadMgr) SetState(serverpb.ServiceStats) {
-	l.state = serverpb.ServiceStats_RUN
+func (l *LoadMgr) SetState(state serverpb.ServiceStats) {
+	l.state = state
 }
 
 func (l *LoadMgr) GetState() serverpb.ServiceStats {
@@ -97,8 +98,8 @@ func NewLoadMgr() *LoadMgr {
 }
 
 func GrpcInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
-	atomic.AddInt64(&runningRPC,1)
-	resp,err := handler(ctx, req)
-
+	runningRPC++
+	resp,err = handler(ctx, req)
+	runningRPC--
 	return resp, err
 }
