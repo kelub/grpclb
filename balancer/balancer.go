@@ -3,3 +3,6 @@
 // Get server
 
 package balancer
+
+type servers struct {
+}

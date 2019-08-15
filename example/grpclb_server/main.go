@@ -20,7 +20,7 @@ var opt example.Options
 func main() {
 	flag.Parse()
 	rpcOption := make([]grpc.ServerOption, 0)
-	rpcOption = append(rpcOption,grpc.UnaryInterceptor(GrpcInterceptor))
+	rpcOption = append(rpcOption, grpc.UnaryInterceptor(GrpcInterceptor))
 	s := grpc.NewServer(rpcOption...)
 	lr.RegisterLBReporter(s, &lr.LoadBlancerReporter{}, NewLoadMgr())
 	wg := sync.WaitGroup{}
@@ -42,6 +42,10 @@ func init() {
 	flag.StringVar(&opt.RPCAddress, "addr", "127.0.0.1", "Server address. Default: 127.0.0.1")
 	flag.StringVar(&opt.RPCPort, "prot", "8081", "Server address. Default: 8081")
 	flag.StringVar(&opt.ServerName, "name", "A", "Server address. Default: A")
+
+	flag.StringVar(&opt.ConsulAddress, "consulAddr", "127.0.0.1", "Server address. Default: 127.0.0.1")
+	flag.IntVar(&opt.HealthPort, "healthPort", 8082, "Server HealthPort. Default: 8082")
+	flag.IntVar(&opt.ProfPort, "profPort", 8080, "Server ProfPort. Default: 8080")
 }
 
 func Start() {
@@ -99,7 +103,7 @@ func NewLoadMgr() *LoadMgr {
 
 func GrpcInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
 	runningRPC++
-	resp,err = handler(ctx, req)
+	resp, err = handler(ctx, req)
 	runningRPC--
 	return resp, err
 }
