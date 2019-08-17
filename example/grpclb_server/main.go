@@ -20,6 +20,10 @@ var opt example.Options
 
 func main() {
 	flag.Parse()
+	logEntry := logrus.WithFields(logrus.Fields{
+		"func_name": "main",
+	})
+	logEntry.Infof("%+v",opt)
 	rpcOption := make([]grpc.ServerOption, 0)
 	rpcOption = append(rpcOption, grpc.UnaryInterceptor(GrpcInterceptor))
 	s := grpc.NewServer(rpcOption...)
@@ -46,6 +50,7 @@ func init() {
 	flag.StringVar(&opt.RPCAddress, "addr", "127.0.0.1", "Server address. Default: 127.0.0.1")
 	flag.IntVar(&opt.RPCPort, "port", 8081, "Server address. Default: 8081")
 	flag.StringVar(&opt.ServerName, "name", "gateserver", "Server address. Default: gateserver")
+	flag.StringVar(&opt.ServerID, "serverid", "9999", "Server address. Default: 9999")
 
 	flag.StringVar(&opt.ConsulAddress, "consulAddr", "127.0.0.1", "Server address. Default: 127.0.0.1")
 	flag.IntVar(&opt.HealthPort, "healthPort", 8082, "Server HealthPort. Default: 8082")
@@ -134,7 +139,7 @@ func RegisterToConsul() error {
 		DeregisterCriticalServiceAfter: "300s",
 	}
 	registration := &consulapi.AgentServiceRegistration{
-		ID:   "9999",
+		ID:   opt.ServerID,
 		Name: opt.ServerName,
 		//Tags: "",
 		Port:    opt.RPCPort,
@@ -147,14 +152,6 @@ func RegisterToConsul() error {
 	}
 	logEntry.Infof("ServiceRegister")
 	httpServer := example.CreateHttpServer()
-	//opts := &example.Options{
-	//	ServerName    : "gateserver",
-	//	RPCAddress    : "127.0.0.1",
-	//	RPCPort       : "8081",
-	//	ConsulAddress : "127.0.0.1",
-	//	HealthPort    : 8082,
-	//	ProfPort      : 8080,
-	//}
 	go func() {
 		httpServer.Main(&opt)
 	}()
