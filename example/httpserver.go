@@ -17,8 +17,8 @@ func CreateHttpServer() *HttpServer {
 func (h *HttpServer) Main(opts *Options) error {
 	h.opts = opts
 	logEntry := logrus.WithFields(logrus.Fields{
-		"func_name": "httpServer.Main",
-		"HealthPort":      h.opts.HealthPort,
+		"func_name":  "httpServer.Main",
+		"HealthPort": h.opts.HealthPort,
 	})
 	h.HttpFunc()
 	logEntry.Infof("start http health check")

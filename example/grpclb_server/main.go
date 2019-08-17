@@ -44,7 +44,7 @@ func main() {
 
 func init() {
 	flag.StringVar(&opt.RPCAddress, "addr", "127.0.0.1", "Server address. Default: 127.0.0.1")
-	flag.IntVar(&opt.RPCPort, "prot", 8081, "Server address. Default: 8081")
+	flag.IntVar(&opt.RPCPort, "port", 8081, "Server address. Default: 8081")
 	flag.StringVar(&opt.ServerName, "name", "gateserver", "Server address. Default: gateserver")
 
 	flag.StringVar(&opt.ConsulAddress, "consulAddr", "127.0.0.1", "Server address. Default: 127.0.0.1")
@@ -115,10 +115,10 @@ func GrpcInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServe
 ////
 
 func RegisterToConsul() error {
-	consulAddr := fmt.Sprintf("%s:8500",opt.RPCAddress)
+	consulAddr := fmt.Sprintf("%s:8500", opt.RPCAddress)
 	logEntry := logrus.WithFields(logrus.Fields{
-		"func_name": "RegisterToConsul",
-		"consulAddr":      consulAddr,
+		"func_name":  "RegisterToConsul",
+		"consulAddr": consulAddr,
 	})
 	conf := consulapi.DefaultConfig()
 	conf.Address = consulAddr
@@ -128,7 +128,7 @@ func RegisterToConsul() error {
 	}
 	agent := consulClient.Agent()
 	ck := &consulapi.AgentServiceCheck{
-		HTTP:                          fmt.Sprintf("http://%s:%d/status",opt.RPCAddress,opt.HealthPort),
+		HTTP:                           fmt.Sprintf("http://%s:%d/status", opt.RPCAddress, opt.HealthPort),
 		Interval:                       "3s",
 		Timeout:                        "5s",
 		DeregisterCriticalServiceAfter: "300s",
