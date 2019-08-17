@@ -38,14 +38,14 @@ func Test_RegisterToConsul(t *testing.T) {
 
 	httpServer := example.CreateHttpServer()
 	opts := &example.Options{
-		ServerName    : "gateserver",
-		RPCAddress    : "127.0.0.1",
-		RPCPort       : "8081",
-		ConsulAddress : "127.0.0.1",
-		HealthPort    : 8082,
-		ProfPort      : 8080,
+		ServerName:    "gateserver",
+		RPCAddress:    "127.0.0.1",
+		RPCPort:       "8081",
+		ConsulAddress: "127.0.0.1",
+		HealthPort:    8082,
+		ProfPort:      8080,
 	}
-	go func(){
+	go func() {
 		httpServer.Main(opts)
 	}()
 }

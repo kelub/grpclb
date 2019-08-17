@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/Sirupsen/logrus"
+	consulapi "github.com/hashicorp/consul/api"
 	"google.golang.org/grpc"
 	"kelub/grpclb/example"
 	lr "kelub/grpclb/load_reporter"
@@ -23,6 +24,9 @@ func main() {
 	rpcOption = append(rpcOption, grpc.UnaryInterceptor(GrpcInterceptor))
 	s := grpc.NewServer(rpcOption...)
 	lr.RegisterLBReporter(s, &lr.LoadBlancerReporter{}, NewLoadMgr())
+
+	RegisterToConsul()
+
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
@@ -40,8 +44,8 @@ func main() {
 
 func init() {
 	flag.StringVar(&opt.RPCAddress, "addr", "127.0.0.1", "Server address. Default: 127.0.0.1")
-	flag.StringVar(&opt.RPCPort, "prot", "8081", "Server address. Default: 8081")
-	flag.StringVar(&opt.ServerName, "name", "A", "Server address. Default: A")
+	flag.IntVar(&opt.RPCPort, "prot", 8081, "Server address. Default: 8081")
+	flag.StringVar(&opt.ServerName, "name", "gateserver", "Server address. Default: gateserver")
 
 	flag.StringVar(&opt.ConsulAddress, "consulAddr", "127.0.0.1", "Server address. Default: 127.0.0.1")
 	flag.IntVar(&opt.HealthPort, "healthPort", 8082, "Server HealthPort. Default: 8082")
@@ -55,14 +59,14 @@ func Start() {
 	return
 }
 
-func RunRPCServer(s *grpc.Server, addr string, port string) {
+func RunRPCServer(s *grpc.Server, addr string, port int) {
 	logEntry := logrus.WithFields(logrus.Fields{
 		"func_name": "RunRPCServer",
 		"addr":      addr,
 		"port":      port,
 	})
 	logEntry.Infoln("RPC Starting...")
-	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%s", addr, port))
+	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", addr, port))
 	if err != nil {
 		logEntry.Info(err)
 		return
@@ -106,4 +110,53 @@ func GrpcInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServe
 	resp, err = handler(ctx, req)
 	runningRPC--
 	return resp, err
+}
+
+////
+
+func RegisterToConsul() error {
+	consulAddr := fmt.Sprintf("%s:8500",opt.RPCAddress)
+	logEntry := logrus.WithFields(logrus.Fields{
+		"func_name": "RegisterToConsul",
+		"consulAddr":      consulAddr,
+	})
+	conf := consulapi.DefaultConfig()
+	conf.Address = consulAddr
+	consulClient, err := consulapi.NewClient(conf)
+	if err != nil {
+		return err
+	}
+	agent := consulClient.Agent()
+	ck := &consulapi.AgentServiceCheck{
+		HTTP:                          fmt.Sprintf("http://%s:%d/status",opt.RPCAddress,opt.HealthPort),
+		Interval:                       "3s",
+		Timeout:                        "5s",
+		DeregisterCriticalServiceAfter: "300s",
+	}
+	registration := &consulapi.AgentServiceRegistration{
+		ID:   "9999",
+		Name: opt.ServerName,
+		//Tags: "",
+		Port:    opt.RPCPort,
+		Address: opt.RPCAddress,
+		Check:   ck,
+	}
+	err = agent.ServiceRegister(registration)
+	if err != nil {
+		return nil
+	}
+	logEntry.Infof("ServiceRegister")
+	httpServer := example.CreateHttpServer()
+	//opts := &example.Options{
+	//	ServerName    : "gateserver",
+	//	RPCAddress    : "127.0.0.1",
+	//	RPCPort       : "8081",
+	//	ConsulAddress : "127.0.0.1",
+	//	HealthPort    : 8082,
+	//	ProfPort      : 8080,
+	//}
+	go func() {
+		httpServer.Main(&opt)
+	}()
+	return nil
 }
