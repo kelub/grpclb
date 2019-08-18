@@ -25,19 +25,19 @@ func NewDiscovry(consulAddr string) (*discovry, error) {
 	}, nil
 }
 
-func (d *discovry) NameResolve(serviceName string, tags string, resolveWaitTime time.Duration) ([]string, error) {
+func (d *discovry) NameResolve(serviceName string, tag string, resolveWaitTime time.Duration) ([]string, error) {
 	q := &consulapi.QueryOptions{
 		WaitTime: resolveWaitTime,
 	}
-	serviceEntry, _, err := d.consulClient.Health().Service(serviceName, tags, true, q)
+	serviceEntry, _, err := d.consulClient.Health().Service(serviceName, tag, true, q)
 	if err != nil {
 		return nil, err
 	}
-	addrs := make([]string, len(serviceEntry))
+	addrs := make([]string, 0)
 	for i := 0; i < len(serviceEntry); i++ {
 		addr := serviceEntry[i].Service.Address
 		port := serviceEntry[i].Service.Port
-		addrs[i] = fmt.Sprintf("%s:%d", addr, port)
+		addrs = append(addrs, fmt.Sprintf("%s:%d", addr, port))
 	}
 	return addrs, nil
 }

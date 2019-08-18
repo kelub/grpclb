@@ -23,7 +23,7 @@ func main() {
 	logEntry := logrus.WithFields(logrus.Fields{
 		"func_name": "main",
 	})
-	logEntry.Infof("%+v",opt)
+	logEntry.Infof("%+v", opt)
 	rpcOption := make([]grpc.ServerOption, 0)
 	rpcOption = append(rpcOption, grpc.UnaryInterceptor(GrpcInterceptor))
 	s := grpc.NewServer(rpcOption...)
@@ -138,10 +138,11 @@ func RegisterToConsul() error {
 		Timeout:                        "5s",
 		DeregisterCriticalServiceAfter: "300s",
 	}
+	tags_test := []string{"A", "B", "CD", "EFG"}
 	registration := &consulapi.AgentServiceRegistration{
-		ID:   opt.ServerID,
-		Name: opt.ServerName,
-		//Tags: "",
+		ID:      opt.ServerID,
+		Name:    opt.ServerName,
+		Tags:    tags_test,
 		Port:    opt.RPCPort,
 		Address: opt.RPCAddress,
 		Check:   ck,

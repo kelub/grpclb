@@ -21,4 +21,17 @@ func Test_NameResolve(t *testing.T) {
 	fmt.Println(addrs)
 }
 
+func Test_NameResolve_Tags(t *testing.T) {
+	d, err := NewDiscovry(consulAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolveWaitTime := time.Duration(5 * time.Second)
+	addrs, err := d.NameResolve("loginserver", "B", resolveWaitTime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(addrs)
+}
+
 // 15838233822

@@ -4,5 +4,7 @@ package discovry
 
 type Discovry interface {
 	// Name -> Addr    //like DNS
-	NameResolve(name string) (Addr string)
+	// name servername
+	// tag groupname
+	NameResolve(name string, tag string) (Addr string)
 }
