@@ -56,15 +56,19 @@ func (b *Balancer) GetServers(serviceName string, tags []string) ([]*ServersResp
 		server := s.([]*ServersResponse)
 		return server, nil
 	}
+	//servers, err :=
 
 }
 
 type Service struct {
+	target   string
+	address  []string
 	discovry discovry.Discovry
-	load     *ld.LoadBlancerReporter
+
+	loadClientMgr ld.LoadClientMgr
 }
 
-func NewService() (*Service, error) {
+func NewService(target string) (*Service, error) {
 	consulAddr := ""
 	discovry, err := discovry.NewDiscovry(consulAddr)
 	if err != nil {
@@ -72,6 +76,9 @@ func NewService() (*Service, error) {
 	}
 
 	//loadClient
+	loadClientMgr := ld.NewLoadClientMgr(target)
+
+
 
 	return &Service{}, nil
 }
