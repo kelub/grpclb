@@ -59,6 +59,7 @@ func (lc *LoadClient) GetCurLoad() (int64, error) {
 type LoadClientMgr struct {
 	//One group target
 	target         string
+	serviceAddrs   []string
 	loadClientList *sync.Map
 }
 
@@ -68,4 +69,8 @@ func NewLoadClientMgr(target string) *LoadClientMgr {
 		loadClientList: new(sync.Map),
 	}
 	return lcm
+}
+
+func (lcm *LoadClientMgr) GetServer(serviceAddrs string) {
+
 }

@@ -5,11 +5,12 @@
 package balancer
 
 import (
-	"kelub/grpclb/discovry"
+	dis "kelub/grpclb/discovry"
 	ld "kelub/grpclb/load_reporter"
 	serverpb "kelub/grpclb/pb/server"
 	"strings"
 	"sync"
+	"time"
 )
 
 type ServersResponse struct {
@@ -50,35 +51,51 @@ func NewBalancer() *Balancer {
 }
 
 func (b *Balancer) GetServers(serviceName string, tags []string) ([]*ServersResponse, error) {
-	target := b.nameToTarget(serviceName, tags)
-	s, ok := b.Serverslist.Load(target)
-	if ok {
-		server := s.([]*ServersResponse)
-		return server, nil
-	}
-	//servers, err :=
+	//target := b.nameToTarget(serviceName, tags)
+	//s, ok := b.Serverslist.Load(target)
+	//if ok {
+	//	server := s.([]*ServersResponse)
+	//	return server, nil
+	//}
+	////servers, err :=
 
 }
 
 type Service struct {
 	target   string
 	address  []string
-	discovry discovry.Discovry
+	serviceName string
+	tags 	[]string
+	discovry dis.Discovry
 
-	loadClientMgr ld.LoadClientMgr
+	loadClientMgr *ld.LoadClientMgr
 }
 
-func NewService(target string) (*Service, error) {
+func NewService(target string, serviceName string, tags []string) (*Service, error) {
 	consulAddr := ""
-	discovry, err := discovry.NewDiscovry(consulAddr)
+	d, err := dis.NewDiscovry(consulAddr)
 	if err != nil {
 		return nil, err
 	}
 
 	//loadClient
 	loadClientMgr := ld.NewLoadClientMgr(target)
+	return &Service{
+		serviceName: serviceName,
+		tags: tags,
+		discovry:      d,
+		loadClientMgr: loadClientMgr,
+	}, nil
+}
 
-
-
-	return &Service{}, nil
+func (s *Service) GetServer(tags []string) {
+	resolveWaitTime := time.Duration(3 * time.Second)
+	alladdrs := make([]string, 0)
+	for _, tag := range tags {
+		addrs, err := s.discovry.NameResolve(s.serviceName,tag,resolveWaitTime)
+		if err != nil {
+			return nil, err
+		}
+		alladdrs := append(alladdrs, addrs...)
+	}
 }
