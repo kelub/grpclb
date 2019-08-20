@@ -58,15 +58,39 @@ func (b *Balancer) GetServers(serviceName string, tags []string) ([]*ServersResp
 	//	return server, nil
 	//}
 	////servers, err :=
+	target := b.nameToTarget(serviceName, tags)
+	s, ok := b.Serverslist.Load(target)
+	if ok {
+		service := s.(*Service)
+		server, err := service.GetServer(tags)
+		if err != nil {
+			b.Serverslist.Delete(target)
+			return nil, err
+		}
+		return server, nil
+	}
 
+	service, err := NewService(target, serviceName, tags)
+	if err != nil {
+		return nil, err
+	}
+	b.Serverslist.Store(target, service)
+	server, err := service.GetServer(tags)
+	if err != nil {
+		b.Serverslist.Delete(target)
+		return nil, err
+	}
+
+	//TODO load value handler
+	return server, nil
 }
 
 type Service struct {
-	target   string
-	address  []string
+	target      string
+	address     []string
 	serviceName string
-	tags 	[]string
-	discovry dis.Discovry
+	tags        []string
+	discovry    dis.Discovry
 
 	loadClientMgr *ld.LoadClientMgr
 }
@@ -81,21 +105,35 @@ func NewService(target string, serviceName string, tags []string) (*Service, err
 	//loadClient
 	loadClientMgr := ld.NewLoadClientMgr(target)
 	return &Service{
-		serviceName: serviceName,
-		tags: tags,
+		target:        target,
+		serviceName:   serviceName,
+		tags:          tags,
 		discovry:      d,
 		loadClientMgr: loadClientMgr,
 	}, nil
 }
 
-func (s *Service) GetServer(tags []string) {
-	resolveWaitTime := time.Duration(3 * time.Second)
+func (s *Service) GetServer(tags []string) (res []*ServersResponse, err error) {
+	resolveWaitTime := time.Duration(1 * time.Second)
 	alladdrs := make([]string, 0)
 	for _, tag := range tags {
-		addrs, err := s.discovry.NameResolve(s.serviceName,tag,resolveWaitTime)
+		addrs, err := s.discovry.NameResolve(s.serviceName, tag, resolveWaitTime)
 		if err != nil {
 			return nil, err
 		}
-		alladdrs := append(alladdrs, addrs...)
+		alladdrs = append(alladdrs, addrs...)
 	}
+	r, err := s.loadClientMgr.GetServers(alladdrs)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range r {
+		sr := &ServersResponse{
+			ServerAddr: k,
+			CurLoad:    v.CurLoad,
+			State:      v.State,
+		}
+		res = append(res, sr)
+	}
+	return res, err
 }

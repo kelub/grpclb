@@ -27,7 +27,7 @@ func Test_NameResolve_Tags(t *testing.T) {
 		t.Fatal(err)
 	}
 	resolveWaitTime := time.Duration(5 * time.Second)
-	addrs, err := d.NameResolve("loginserver", "B", resolveWaitTime)
+	addrs, err := d.NameResolve("loginserver", "master", resolveWaitTime)
 	if err != nil {
 		t.Fatal(err)
 	}

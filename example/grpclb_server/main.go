@@ -11,6 +11,7 @@ import (
 	lr "kelub/grpclb/load_reporter"
 	serverpb "kelub/grpclb/pb/server"
 	"net"
+	"strings"
 	"sync"
 )
 
@@ -51,6 +52,7 @@ func init() {
 	flag.IntVar(&opt.RPCPort, "port", 8081, "Server address. Default: 8081")
 	flag.StringVar(&opt.ServerName, "name", "gateserver", "Server address. Default: gateserver")
 	flag.StringVar(&opt.ServerID, "serverid", "9999", "Server address. Default: 9999")
+	flag.StringVar(&opt.ServerTags, "tags", "master_1", "service groups. Default: master_1")
 
 	flag.StringVar(&opt.ConsulAddress, "consulAddr", "127.0.0.1", "Server address. Default: 127.0.0.1")
 	flag.IntVar(&opt.HealthPort, "healthPort", 8082, "Server HealthPort. Default: 8082")
@@ -138,11 +140,13 @@ func RegisterToConsul() error {
 		Timeout:                        "5s",
 		DeregisterCriticalServiceAfter: "300s",
 	}
-	tags_test := []string{"A", "B", "CD", "EFG"}
+	//tags_test := []string{"A", "B", "CD", "EFG"}
+	opt.ServerTags = strings.Replace(opt.ServerTags, " ", "", -1)
+	tags := strings.Split(opt.ServerTags, ",")
 	registration := &consulapi.AgentServiceRegistration{
 		ID:      opt.ServerID,
 		Name:    opt.ServerName,
-		Tags:    tags_test,
+		Tags:    tags,
 		Port:    opt.RPCPort,
 		Address: opt.RPCAddress,
 		Check:   ck,

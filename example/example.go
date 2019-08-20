@@ -8,4 +8,5 @@ type Options struct {
 	ConsulAddress string `flag:"tcp-port"`
 	HealthPort    int    `flag:"HealthPort"`
 	ProfPort      int    `flag:"prof_port"`
+	ServerTags    string `flag:"server_tags"`
 }
