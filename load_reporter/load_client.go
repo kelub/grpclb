@@ -47,7 +47,7 @@ func (lc *LoadClient) GetLoad(ctx context.Context) (r *serverpb.LoadReporterResp
 		logEntry.Errorf("could not verify: %v", err)
 		return nil, err
 	}
-	logEntry.Infof("%+v",r)
+	logEntry.Infof("[%d]", r.CurLoad)
 	return
 }
 
@@ -67,17 +67,22 @@ type LoadClientMgr struct {
 	loadReporterResList *sync.Map //addr: *serverpb.LoadReporterResponse
 }
 
+type loaderror struct {
+	serviceAddr string
+	err         error
+}
+
 func NewLoadClientMgr(target string) *LoadClientMgr {
 	lcm := &LoadClientMgr{
-		target:         target,
-		loadClientList: new(sync.Map),
+		target:              target,
+		loadClientList:      new(sync.Map),
 		loadReporterResList: new(sync.Map),
 	}
 	return lcm
 }
 
 func (lcm *LoadClientMgr) getServer(ctx context.Context,
-	stopch chan struct{}, rch chan map[string]*serverpb.LoadReporterResponse,
+	errch chan *loaderror, rch chan map[string]*serverpb.LoadReporterResponse,
 	lc *LoadClient, serviceAddr string) error {
 	logEntry := logrus.WithFields(logrus.Fields{
 		"func_name":   "getServer",
@@ -87,7 +92,11 @@ func (lcm *LoadClientMgr) getServer(ctx context.Context,
 	lrr, err := lc.GetLoad(ctx)
 	if err != nil {
 		logEntry.Error(err)
-		stopch <- struct{}{}
+		e := &loaderror{
+			serviceAddr: serviceAddr,
+			err:         err,
+		}
+		errch <- e
 		return err
 	}
 	lcm.loadReporterResList.Store(serviceAddr, lrr)
@@ -104,45 +113,77 @@ func (lcm *LoadClientMgr) GetServers(serviceAddrs []string) (r map[string]*serve
 	})
 	lcm.serviceAddrs = serviceAddrs
 	r = make(map[string]*serverpb.LoadReporterResponse)
+
 	//var wg sync.WaitGroup
 	rch := make(chan map[string]*serverpb.LoadReporterResponse, len(serviceAddrs))
-	stopch := make(chan struct{})
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	errch := make(chan *loaderror)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
+	var count = 0
+	var rcount = 0
+
 	for i := range serviceAddrs {
 		addr := serviceAddrs[i]
-		var lc *LoadClient
-		v, ok := lcm.loadClientList.Load(addr)
+		l, ok := lcm.loadReporterResList.Load(addr)
 		if ok {
-			lc = v.(*LoadClient)
+			r[addr] = l.(*serverpb.LoadReporterResponse)
+			logEntry.Info("cache!")
 		} else {
-			lc, err = NewLoadClient(ctx, addr)
-			if err != nil {
-				return nil, err
+			var lc *LoadClient
+			v, ok := lcm.loadClientList.Load(addr)
+			if ok {
+				lc = v.(*LoadClient)
+			} else {
+				lc, err = NewLoadClient(ctx, addr)
+				if err != nil {
+					return nil, err
+				}
+				lcm.loadClientList.Store(addr, lc)
 			}
-			lcm.loadClientList.Store(addr, lc)
+			go lcm.getServer(ctx, errch, rch, lc, addr)
+			count++
 		}
-		go lcm.getServer(ctx, stopch, rch, lc, addr)
 	}
+	if count > 0 {
+		for {
+			select {
+			case e := <-errch:
+				//TODO error handule and delete cache
+				logEntry.Errorln(e.err)
+				lcm.ResetCache(e.serviceAddr)
+				return nil, e.err
+			case <-ctx.Done():
+				//TODO error handule and delete cache
+				logEntry.Error("timeout")
+				return nil, nil
+			case rll := <-rch:
+				for k, v := range rll {
+					fmt.Printf("%s \n", k)
+					fmt.Printf("%d \n", v.CurLoad)
+					r[k] = v
+				}
+				rcount++
+				if rcount == count {
+					return
+				}
+			}
+		}
 
-	for {
-		select {
-		case <-stopch:
-			//TODO error handule
-			return nil, nil
-		case <-ctx.Done():
-			//TODO error handule
-			logEntry.Error("timeout")
-			return nil, nil
-		case rll := <-rch:
-			for k, v := range rll {
-				fmt.Printf("%s \n",k)
-				fmt.Printf("%+v \n",v)
-				r[k] = v
-			}
-			if len(r) == len(serviceAddrs) {
-				return
-			}
-		}
 	}
+	return
+}
+
+func (lcm *LoadClientMgr) ResetCache(serviceAddr string) {
+	//delete lcm.loadClientList
+	//delete lcm.loadReporterResList
+	lcm.loadReporterResList.Delete(serviceAddr)
+	lcm.loadClientList.Delete(serviceAddr)
+}
+
+func (lcm *LoadClientMgr) upadteLoad() {
+
+}
+
+func (lcm *LoadClientMgr) updateloop() {
+
 }

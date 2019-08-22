@@ -27,6 +27,14 @@ type Balancer struct {
 	Serverslist *sync.Map
 }
 
+func (b *Balancer) init() {
+	b.Serverslist.Range(func(key, value interface{}) bool {
+		addr := key.(string)
+		service := value.(*Service)
+
+	})
+}
+
 func (b *Balancer) nameToTarget(serviceName string, tags []string) (res string) {
 	if tags == nil {
 		return serviceName
@@ -51,13 +59,6 @@ func NewBalancer() *Balancer {
 }
 
 func (b *Balancer) GetServers(serviceName string, tags []string) ([]*ServersResponse, error) {
-	//target := b.nameToTarget(serviceName, tags)
-	//s, ok := b.Serverslist.Load(target)
-	//if ok {
-	//	server := s.([]*ServersResponse)
-	//	return server, nil
-	//}
-	////servers, err :=
 	target := b.nameToTarget(serviceName, tags)
 	s, ok := b.Serverslist.Load(target)
 	if ok {
@@ -96,7 +97,7 @@ type Service struct {
 }
 
 func NewService(target string, serviceName string, tags []string) (*Service, error) {
-	consulAddr := ""
+	consulAddr := ":8500"
 	d, err := dis.NewDiscovry(consulAddr)
 	if err != nil {
 		return nil, err
