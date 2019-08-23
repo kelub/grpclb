@@ -10,7 +10,7 @@ func Test_GetServers(t *testing.T) {
 
 	serviceAddrs := []string{"192.168.171.128:9181", "192.168.171.128:9281", "192.168.171.128:9381"}
 	loadClientMgr := NewLoadClientMgr(target)
-	r, err := loadClientMgr.GetServers(serviceAddrs)
+	r, err := loadClientMgr.GetServers(serviceAddrs, true)
 	if err != nil {
 		t.Fatal("Get Servers Error: ", err)
 	}
@@ -19,7 +19,7 @@ func Test_GetServers(t *testing.T) {
 		fmt.Printf("%+v \n", v)
 	}
 	serviceAddrs = []string{"192.168.171.128:9181"}
-	_, err = loadClientMgr.GetServers(serviceAddrs)
+	_, err = loadClientMgr.GetServers(serviceAddrs, true)
 	if err != nil {
 		t.Fatal("Get Servers Error: ", err)
 	}

@@ -63,8 +63,8 @@ type LoadClientMgr struct {
 	//One group target
 	target              string
 	serviceAddrs        []string
-	loadClientList      *sync.Map //addr: *LoadClient
-	loadReporterResList *sync.Map //addr: *serverpb.LoadReporterResponse
+	LoadClientList      *sync.Map //addr: *LoadClient
+	LoadReporterResList *sync.Map //addr: *serverpb.LoadReporterResponse
 }
 
 type loaderror struct {
@@ -75,8 +75,8 @@ type loaderror struct {
 func NewLoadClientMgr(target string) *LoadClientMgr {
 	lcm := &LoadClientMgr{
 		target:              target,
-		loadClientList:      new(sync.Map),
-		loadReporterResList: new(sync.Map),
+		LoadClientList:      new(sync.Map),
+		LoadReporterResList: new(sync.Map),
 	}
 	return lcm
 }
@@ -99,14 +99,14 @@ func (lcm *LoadClientMgr) getServer(ctx context.Context,
 		errch <- e
 		return err
 	}
-	lcm.loadReporterResList.Store(serviceAddr, lrr)
+	lcm.LoadReporterResList.Store(serviceAddr, lrr)
 	addrLrr[serviceAddr] = lrr
 	rch <- addrLrr
 
 	return nil
 }
 
-func (lcm *LoadClientMgr) GetServers(serviceAddrs []string) (r map[string]*serverpb.LoadReporterResponse, err error) {
+func (lcm *LoadClientMgr) GetServers(serviceAddrs []string, useResCache bool) (r map[string]*serverpb.LoadReporterResponse, err error) {
 	logEntry := logrus.WithFields(logrus.Fields{
 		"func_name":    "GetServers",
 		"serviceAddrs": serviceAddrs,
@@ -124,13 +124,13 @@ func (lcm *LoadClientMgr) GetServers(serviceAddrs []string) (r map[string]*serve
 
 	for i := range serviceAddrs {
 		addr := serviceAddrs[i]
-		l, ok := lcm.loadReporterResList.Load(addr)
-		if ok {
+		l, ok := lcm.LoadReporterResList.Load(addr)
+		if ok && useResCache {
 			r[addr] = l.(*serverpb.LoadReporterResponse)
 			logEntry.Info("cache!")
 		} else {
 			var lc *LoadClient
-			v, ok := lcm.loadClientList.Load(addr)
+			v, ok := lcm.LoadClientList.Load(addr)
 			if ok {
 				lc = v.(*LoadClient)
 			} else {
@@ -138,11 +138,12 @@ func (lcm *LoadClientMgr) GetServers(serviceAddrs []string) (r map[string]*serve
 				if err != nil {
 					return nil, err
 				}
-				lcm.loadClientList.Store(addr, lc)
+				lcm.LoadClientList.Store(addr, lc)
 			}
 			go lcm.getServer(ctx, errch, rch, lc, addr)
 			count++
 		}
+
 	}
 	if count > 0 {
 		for {
@@ -150,7 +151,7 @@ func (lcm *LoadClientMgr) GetServers(serviceAddrs []string) (r map[string]*serve
 			case e := <-errch:
 				//TODO error handule and delete cache
 				logEntry.Errorln(e.err)
-				lcm.ResetCache(e.serviceAddr)
+				lcm.DeleteCache(e.serviceAddr)
 				return nil, e.err
 			case <-ctx.Done():
 				//TODO error handule and delete cache
@@ -173,11 +174,11 @@ func (lcm *LoadClientMgr) GetServers(serviceAddrs []string) (r map[string]*serve
 	return
 }
 
-func (lcm *LoadClientMgr) ResetCache(serviceAddr string) {
-	//delete lcm.loadClientList
-	//delete lcm.loadReporterResList
-	lcm.loadReporterResList.Delete(serviceAddr)
-	lcm.loadClientList.Delete(serviceAddr)
+func (lcm *LoadClientMgr) DeleteCache(serviceAddr string) {
+	//delete lcm.LoadClientList
+	//delete lcm.LoadReporterResList
+	lcm.LoadReporterResList.Delete(serviceAddr)
+	lcm.LoadClientList.Delete(serviceAddr)
 }
 
 func (lcm *LoadClientMgr) upadteLoad() {
