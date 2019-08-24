@@ -1,6 +1,5 @@
-// Load Report
-// Get the current load value of the service
-// gRPC mode
+// load_reporter
+// 负载 grpc server 实现
 package load_reporter
 
 import (
@@ -24,6 +23,7 @@ type LoadBlancerReporter struct {
 	stats   serverpb.ServiceStats
 }
 
+// LoadReporter 负载报告实现
 func (r *LoadBlancerReporter) LoadReporter(ctx context.Context, request *serverpb.LoadReporterRequest) (
 	response *serverpb.LoadReporterResponse, err error) {
 	logEntry := logrus.WithFields(logrus.Fields{
@@ -39,6 +39,7 @@ func (r *LoadBlancerReporter) LoadReporter(ctx context.Context, request *serverp
 	return response, nil
 }
 
+// 注册 grpc 服务
 func RegisterLBReporter(g *grpc.Server, lbr *LoadBlancerReporter, svrLoad CurLoader) error {
 	logrus.Infof("Register Load Blancer Reporter")
 	lbr = &LoadBlancerReporter{

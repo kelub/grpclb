@@ -1,4 +1,5 @@
 // consul
+// 服务发现 consul 实现
 
 package discovry
 
@@ -10,7 +11,7 @@ import (
 
 type discovry struct {
 	consulClient    *consulapi.Client
-	resolveWaitTime time.Duration
+	resolveWaitTime time.Duration // 获取地址等待时间
 }
 
 func NewDiscovry(consulAddr string) (*discovry, error) {
@@ -25,6 +26,7 @@ func NewDiscovry(consulAddr string) (*discovry, error) {
 	}, nil
 }
 
+// NameResolve 获取 service 地址
 func (d *discovry) NameResolve(serviceName string, tag string, resolveWaitTime time.Duration) ([]string, error) {
 	q := &consulapi.QueryOptions{
 		WaitTime: resolveWaitTime,

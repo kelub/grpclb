@@ -2,7 +2,6 @@ package load_reporter
 
 import (
 	"context"
-	"fmt"
 	"github.com/Sirupsen/logrus"
 	"google.golang.org/grpc"
 	serverpb "kelub/grpclb/pb/server"
@@ -13,6 +12,7 @@ import (
 type LoadClientMgrer interface {
 }
 
+// LoadClient 负载
 type LoadClient struct {
 	cc  *grpc.ClientConn
 	lrc serverpb.LoadReporterServiceClient
@@ -36,6 +36,7 @@ func NewLoadClient(ctx context.Context, serviceAddr string) (*LoadClient, error)
 	}, nil
 }
 
+// GetLoad 获取负载
 func (lc *LoadClient) GetLoad(ctx context.Context) (r *serverpb.LoadReporterResponse, err error) {
 	logEntry := logrus.WithFields(logrus.Fields{
 		"func_name": "GetLoad",
@@ -59,6 +60,7 @@ func (lc *LoadClient) GetLoad(ctx context.Context) (r *serverpb.LoadReporterResp
 //	return lrr.GetCurLoad(), nil
 //}
 
+// LoadClientMgr 管理一组 service 负载
 type LoadClientMgr struct {
 	//One group target
 	target              string
@@ -106,18 +108,21 @@ func (lcm *LoadClientMgr) getServer(ctx context.Context,
 	return nil
 }
 
+// GetServers 获取服务负载列表
+// LoadReporterResList cache
+// LoadClientList cache -> getServer
 func (lcm *LoadClientMgr) GetServers(serviceAddrs []string, useResCache bool) (r map[string]*serverpb.LoadReporterResponse, err error) {
 	logEntry := logrus.WithFields(logrus.Fields{
 		"func_name":    "GetServers",
 		"serviceAddrs": serviceAddrs,
 	})
+	// TODO 配置化
+	getServerTimeout := 100 * time.Millisecond
 	lcm.serviceAddrs = serviceAddrs
 	r = make(map[string]*serverpb.LoadReporterResponse)
-
-	//var wg sync.WaitGroup
 	rch := make(chan map[string]*serverpb.LoadReporterResponse, len(serviceAddrs))
 	errch := make(chan *loaderror)
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), getServerTimeout)
 	defer cancel()
 	var count = 0
 	var rcount = 0
@@ -155,12 +160,10 @@ func (lcm *LoadClientMgr) GetServers(serviceAddrs []string, useResCache bool) (r
 				return nil, e.err
 			case <-ctx.Done():
 				//TODO error handule and delete cache
-				logEntry.Error("timeout")
+				logEntry.Error("getServer timeout")
 				return nil, nil
 			case rll := <-rch:
 				for k, v := range rll {
-					fmt.Printf("%s \n", k)
-					fmt.Printf("%d \n", v.CurLoad)
 					r[k] = v
 				}
 				rcount++
@@ -179,12 +182,4 @@ func (lcm *LoadClientMgr) DeleteCache(serviceAddr string) {
 	//delete lcm.LoadReporterResList
 	lcm.LoadReporterResList.Delete(serviceAddr)
 	lcm.LoadClientList.Delete(serviceAddr)
-}
-
-func (lcm *LoadClientMgr) upadteLoad() {
-
-}
-
-func (lcm *LoadClientMgr) updateloop() {
-
 }

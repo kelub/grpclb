@@ -15,10 +15,11 @@ import (
 	"time"
 )
 
+// 负载返回结构体
 type ServersResponse struct {
-	ServerAddr string
-	CurLoad    int64
-	State      serverpb.ServiceStats
+	ServerAddr string                // 服务器地址
+	CurLoad    int64                 // 服务器当前负载值
+	State      serverpb.ServiceStats // 服务器当前状态
 }
 
 type Balancerer interface {
@@ -26,7 +27,7 @@ type Balancerer interface {
 }
 
 type Balancer struct {
-	Serverslist *sync.Map
+	Serverslist *sync.Map //target: *Service
 }
 
 func (b *Balancer) RefreshAllLoad() {
@@ -39,6 +40,7 @@ func (b *Balancer) RefreshAllLoad() {
 }
 
 func (b *Balancer) refresloop() {
+	// TODO 配置化 refreshInterval
 	refreshInterval := 5 * time.Second
 	t := time.NewTicker(refreshInterval)
 	for {
@@ -49,6 +51,7 @@ func (b *Balancer) refresloop() {
 	}
 }
 
+// refreshLoad 刷新负载值
 func (b *Balancer) refreshLoad(target string, service *Service) error {
 	logEntry := logrus.WithFields(logrus.Fields{
 		"func_name": "updateLoad",
@@ -104,6 +107,7 @@ func (b *Balancer) targetToName(target string) (serviceName string, tags []strin
 	return
 }
 
+// NewBalancer 创建Balancer，并开启定时刷新循环，返回Balancer。
 func NewBalancer() *Balancer {
 	b := &Balancer{
 		Serverslist: new(sync.Map),
@@ -112,6 +116,7 @@ func NewBalancer() *Balancer {
 	return b
 }
 
+// GetServers获取服务器信息列表
 func (b *Balancer) GetServers(serviceName string, tags []string) ([]*ServersResponse, error) {
 	target := b.nameToTarget(serviceName, tags)
 	s, ok := b.Serverslist.Load(target)
@@ -140,24 +145,25 @@ func (b *Balancer) GetServers(serviceName string, tags []string) ([]*ServersResp
 	return server, nil
 }
 
+// Service
 type Service struct {
-	target      string
-	address     []string
-	serviceName string
-	tags        []string
-	discovry    dis.Discovry
+	target      string       // serviceName+tags
+	serviceName string       // serviceName 服务名
+	tags        []string     //	服务 tags
+	discovry    dis.Discovry //服务发现
 
-	loadClientMgr *ld.LoadClientMgr
+	loadClientMgr *ld.LoadClientMgr //负载值处理
 }
 
+// NewService 获取新的 Service 。
+// 创建服务发现以及负载管理器
 func NewService(target string, serviceName string, tags []string) (*Service, error) {
+	// TODO 配置化
 	consulAddr := ":8500"
 	d, err := dis.NewDiscovry(consulAddr)
 	if err != nil {
 		return nil, err
 	}
-
-	//loadClient
 	loadClientMgr := ld.NewLoadClientMgr(target)
 	return &Service{
 		target:        target,
@@ -168,6 +174,7 @@ func NewService(target string, serviceName string, tags []string) (*Service, err
 	}, nil
 }
 
+// GetServer 获取服务器列表
 func (s *Service) GetServer(tags []string) (res []*ServersResponse, err error) {
 	alladdrs, err := s.getAlladdrs(s.serviceName, tags)
 	if err != nil {
