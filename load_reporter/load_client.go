@@ -48,7 +48,7 @@ func (lc *LoadClient) GetLoad(ctx context.Context) (r *serverpb.LoadReporterResp
 		logEntry.Errorf("could not verify: %v", err)
 		return nil, err
 	}
-	logEntry.Infof("[%d]", r.CurLoad)
+	logEntry.Infof("addr:[%s] curload[%d]", lc.serviceAddr, r.CurLoad)
 	return
 }
 

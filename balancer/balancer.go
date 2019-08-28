@@ -6,8 +6,6 @@ package balancer
 
 import (
 	"github.com/Sirupsen/logrus"
-	dis "kelub/grpclb/discovry"
-	ld "kelub/grpclb/load_reporter"
 	serverpb "kelub/grpclb/pb/server"
 	"sort"
 	"strings"
@@ -27,13 +25,13 @@ type Balancerer interface {
 }
 
 type Balancer struct {
-	Serverslist *sync.Map //target: *Service
+	Serverslist *sync.Map //target: Serviceer
 }
 
 func (b *Balancer) RefreshAllLoad() {
 	b.Serverslist.Range(func(key, value interface{}) bool {
 		target := key.(string)
-		service := value.(*Service)
+		service := value.(Serviceer)
 		b.refreshLoad(target, service)
 		return true
 	})
@@ -43,6 +41,7 @@ func (b *Balancer) refresloop() {
 	// TODO 配置化 refreshInterval
 	refreshInterval := 5 * time.Second
 	t := time.NewTicker(refreshInterval)
+	defer t.Stop()
 	for {
 		select {
 		case <-t.C:
@@ -52,26 +51,26 @@ func (b *Balancer) refresloop() {
 }
 
 // refreshLoad 刷新负载值
-func (b *Balancer) refreshLoad(target string, service *Service) error {
+func (b *Balancer) refreshLoad(target string, service Serviceer) error {
 	logEntry := logrus.WithFields(logrus.Fields{
 		"func_name": "updateLoad",
 		"target":    target,
 	})
 	serviceName, tags := b.targetToName(target)
-	alladdrs, err := service.getAlladdrs(serviceName, tags)
+	alladdrs, err := service.GetAlladdrs(serviceName, tags)
 	if err != nil {
 		b.deleteServiceCache(target)
-		logEntry.Errorf("[getAlladdrs] service target:[target] err: ", err)
+		logEntry.Errorln("[GetAlladdrs] service target:[target] err: ", err)
 		return err
 	}
-	_, err = service.loadClientMgr.GetServers(alladdrs, false)
+	_, err = service.LoadClientMgr().GetServers(alladdrs, false)
 	if err != nil {
-		logEntry.Errorf("GetServers err:", err)
+		logEntry.Errorln("GetServers err:", err)
 		return err
 	}
 	sort.Strings(alladdrs)
 	removeaddrs := make([]string, 0)
-	service.loadClientMgr.LoadClientList.Range(func(key, value interface{}) bool {
+	service.LoadClientMgr().LoadClientList.Range(func(key, value interface{}) bool {
 		oldaddr := key.(string)
 		index := sort.SearchStrings(alladdrs, oldaddr)
 		//SearchStrings在递增顺序的alladdrs中搜索oldaddr，返回oldaddr的索引。
@@ -79,7 +78,7 @@ func (b *Balancer) refreshLoad(target string, service *Service) error {
 		//返回值可以是len(alladdrs)。
 		if index >= len(alladdrs) || alladdrs[index] != oldaddr {
 			removeaddrs = append(removeaddrs, oldaddr)
-			service.loadClientMgr.DeleteCache(oldaddr)
+			service.LoadClientMgr().DeleteCache(oldaddr)
 		}
 		return true
 	})
@@ -118,7 +117,12 @@ func NewBalancer() *Balancer {
 
 // GetServers获取服务器信息列表
 func (b *Balancer) GetServers(serviceName string, tags []string) ([]*ServersResponse, error) {
+	logEntry := logrus.WithFields(logrus.Fields{
+		"func_name":   "GetServers",
+		"serviceName": serviceName,
+	})
 	target := b.nameToTarget(serviceName, tags)
+	logEntry.Debugln("target:", target)
 	s, ok := b.Serverslist.Load(target)
 	if ok {
 		service := s.(*Service)
@@ -143,67 +147,4 @@ func (b *Balancer) GetServers(serviceName string, tags []string) ([]*ServersResp
 
 	//TODO load value handler
 	return server, nil
-}
-
-// Service
-type Service struct {
-	target      string       // serviceName+tags
-	serviceName string       // serviceName 服务名
-	tags        []string     //	服务 tags
-	discovry    dis.Discovry //服务发现
-
-	loadClientMgr *ld.LoadClientMgr //负载值处理
-}
-
-// NewService 获取新的 Service 。
-// 创建服务发现以及负载管理器
-func NewService(target string, serviceName string, tags []string) (*Service, error) {
-	// TODO 配置化
-	consulAddr := ":8500"
-	d, err := dis.NewDiscovry(consulAddr)
-	if err != nil {
-		return nil, err
-	}
-	loadClientMgr := ld.NewLoadClientMgr(target)
-	return &Service{
-		target:        target,
-		serviceName:   serviceName,
-		tags:          tags,
-		discovry:      d,
-		loadClientMgr: loadClientMgr,
-	}, nil
-}
-
-// GetServer 获取服务器列表
-func (s *Service) GetServer(tags []string) (res []*ServersResponse, err error) {
-	alladdrs, err := s.getAlladdrs(s.serviceName, tags)
-	if err != nil {
-		return nil, err
-	}
-	r, err := s.loadClientMgr.GetServers(alladdrs, true)
-	if err != nil {
-		return nil, err
-	}
-	for k, v := range r {
-		sr := &ServersResponse{
-			ServerAddr: k,
-			CurLoad:    v.CurLoad,
-			State:      v.State,
-		}
-		res = append(res, sr)
-	}
-	return res, err
-}
-
-func (s *Service) getAlladdrs(serviceName string, tags []string) ([]string, error) {
-	resolveWaitTime := time.Duration(1 * time.Second)
-	alladdrs := make([]string, 0)
-	for _, tag := range tags {
-		addrs, err := s.discovry.NameResolve(serviceName, tag, resolveWaitTime)
-		if err != nil {
-			return nil, err
-		}
-		alladdrs = append(alladdrs, addrs...)
-	}
-	return alladdrs, nil
 }
