@@ -63,25 +63,27 @@ func (b *Balancer) refreshLoad(target string, service Serviceer) error {
 		logEntry.Errorln("[GetAlladdrs] service target:[target] err: ", err)
 		return err
 	}
-	_, err = service.LoadClientMgr().GetServers(alladdrs, false)
-	if err != nil {
-		logEntry.Errorln("GetServers err:", err)
-		return err
-	}
-	sort.Strings(alladdrs)
-	removeaddrs := make([]string, 0)
-	service.LoadClientMgr().LoadClientList.Range(func(key, value interface{}) bool {
-		oldaddr := key.(string)
-		index := sort.SearchStrings(alladdrs, oldaddr)
-		//SearchStrings在递增顺序的alladdrs中搜索oldaddr，返回oldaddr的索引。
-		//如果查找不到，返回值是oldadd应该插入alladdrs的位置
-		//返回值可以是len(alladdrs)。
-		if index >= len(alladdrs) || alladdrs[index] != oldaddr {
-			removeaddrs = append(removeaddrs, oldaddr)
-			service.LoadClientMgr().DeleteCache(oldaddr)
+	if service.LBStrategy() == Strategy_LoadBalancer {
+		_, err = service.LoadClientMgr().GetServers(alladdrs, false)
+		if err != nil {
+			logEntry.Errorln("GetServers err:", err)
+			return err
 		}
-		return true
-	})
+		sort.Strings(alladdrs)
+		removeaddrs := make([]string, 0)
+		service.LoadClientMgr().LoadClientList.Range(func(key, value interface{}) bool {
+			oldaddr := key.(string)
+			index := sort.SearchStrings(alladdrs, oldaddr)
+			//SearchStrings在递增顺序的alladdrs中搜索oldaddr，返回oldaddr的索引。
+			//如果查找不到，返回值是oldadd应该插入alladdrs的位置
+			//返回值可以是len(alladdrs)。
+			if index >= len(alladdrs) || alladdrs[index] != oldaddr {
+				removeaddrs = append(removeaddrs, oldaddr)
+				service.LoadClientMgr().DeleteCache(oldaddr)
+			}
+			return true
+		})
+	}
 	return err
 }
 
@@ -125,7 +127,7 @@ func (b *Balancer) GetServers(serviceName string, tags []string) ([]*ServersResp
 	logEntry.Debugln("target:", target)
 	s, ok := b.Serverslist.Load(target)
 	if ok {
-		service := s.(*Service)
+		service := s.(Serviceer)
 		server, err := service.GetServer(tags)
 		if err != nil {
 			b.Serverslist.Delete(target)

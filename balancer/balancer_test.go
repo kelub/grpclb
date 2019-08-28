@@ -17,6 +17,8 @@ func TestService_GetServer(t *testing.T) {
 		wg.Add(1)
 		go getServers(t, b, wg, s, tags)
 	}
+	//wg.Add(1)
+	//go getServers(t, b, wg, "loginserver", tags)
 	wg.Wait()
 	fmt.Print("\n over \n")
 	return
