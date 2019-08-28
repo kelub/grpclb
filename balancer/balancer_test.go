@@ -25,7 +25,7 @@ func TestService_GetServer(t *testing.T) {
 }
 
 func getServers(t *testing.T, b *Balancer, wg *sync.WaitGroup, serviceName string, tags []string) {
-	r, err := b.GetServers(serviceName, tags)
+	r, err := b.GetServers(serviceName, tags, uint64(123))
 	defer func() {
 		fmt.Println("defer getServers")
 		wg.Done()

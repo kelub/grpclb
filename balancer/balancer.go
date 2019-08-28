@@ -21,7 +21,7 @@ type ServersResponse struct {
 }
 
 type Balancerer interface {
-	GetServers(serviceName string, tags []string) ([]*ServersResponse, error)
+	GetServers(serviceName string, tags []string, hashID uint64) ([]*ServersResponse, error)
 }
 
 type Balancer struct {
@@ -118,7 +118,7 @@ func NewBalancer() *Balancer {
 }
 
 // GetServers获取服务器信息列表
-func (b *Balancer) GetServers(serviceName string, tags []string) ([]*ServersResponse, error) {
+func (b *Balancer) GetServers(serviceName string, tags []string, hashID uint64) ([]*ServersResponse, error) {
 	logEntry := logrus.WithFields(logrus.Fields{
 		"func_name":   "GetServers",
 		"serviceName": serviceName,
@@ -136,7 +136,7 @@ func (b *Balancer) GetServers(serviceName string, tags []string) ([]*ServersResp
 		return server, nil
 	}
 
-	service, err := NewService(target, serviceName, tags)
+	service, err := NewService(target, serviceName, tags, hashID)
 	if err != nil {
 		return nil, err
 	}

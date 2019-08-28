@@ -1,7 +1,6 @@
 package balancer
 
 import (
-	"errors"
 	"github.com/Sirupsen/logrus"
 	dis "kelub/grpclb/discovry"
 	ld "kelub/grpclb/load_reporter"
@@ -23,7 +22,7 @@ type Serviceer interface {
 
 // NewService 获取新的 Service 。
 // 创建服务发现以及负载管理器
-func NewService(target string, serviceName string, tags []string) (Serviceer, error) {
+func NewService(target string, serviceName string, tags []string, hashID uint64) (Serviceer, error) {
 	// TODO 配置化
 	consulAddr := ":8500"
 	d, err := dis.NewDiscovry(consulAddr)
@@ -59,6 +58,18 @@ func NewService(target string, serviceName string, tags []string) (Serviceer, er
 			},
 			index: 0,
 		}
+	case Strategy_Hash:
+		service = &ServiceHash{
+			Service: Service{
+				target:        target,
+				serviceName:   serviceName,
+				tags:          tags,
+				discovry:      d,
+				loadClientMgr: loadClientMgr,
+				strategyID:    strategyID,
+			},
+			hashID: hashID,
+		}
 	}
 	return service, nil
 }
@@ -85,6 +96,9 @@ func (s *Service) GetServer(tags []string) (res []*ServersResponse, err error) {
 	if err != nil {
 		return nil, err
 	}
+	if alladdrs == nil || len(alladdrs) == 0 {
+		return nil, nil
+	}
 	logEntry.Debugf("alladdrs:[%s]", strings.Join(alladdrs, ","))
 	r, err := s.loadClientMgr.GetServers(alladdrs, true)
 	if err != nil {
@@ -102,6 +116,11 @@ func (s *Service) GetServer(tags []string) (res []*ServersResponse, err error) {
 }
 
 func (s *Service) GetAlladdrs(serviceName string, tags []string) ([]string, error) {
+	logEntry := logrus.WithFields(logrus.Fields{
+		"func_name":   "Service GetAlladdrs",
+		"serviceName": serviceName,
+		"tags":        strings.Join(tags, ","),
+	})
 	resolveWaitTime := time.Duration(1 * time.Second)
 	alladdrs := make([]string, 0)
 	for _, tag := range tags {
@@ -110,7 +129,8 @@ func (s *Service) GetAlladdrs(serviceName string, tags []string) ([]string, erro
 			return nil, err
 		}
 		if len(addrs) == 0 || addrs == nil {
-			return nil, errors.New("addrs is nil")
+			logEntry.Infof("addrs is nil")
+			return nil, nil
 		}
 		alladdrs = append(alladdrs, addrs...)
 	}
@@ -152,6 +172,9 @@ func (s *ServiceRollPoling) GetServer(tags []string) (res []*ServersResponse, er
 	if err != nil {
 		return nil, err
 	}
+	if alladdrs == nil || len(alladdrs) == 0 {
+		return nil, nil
+	}
 	logEntry.Infof("index:[%d] alladdrs:[%s]", s.index, strings.Join(alladdrs, ","))
 	logEntry.Infof("index:[%d]", s.index)
 
@@ -166,10 +189,39 @@ func (s *ServiceRollPoling) GetServer(tags []string) (res []*ServersResponse, er
 	return
 }
 
-func (s *ServiceRollPoling) LoadClientMgr() *ld.LoadClientMgr {
-	return s.loadClientMgr
+// Hash
+type ServiceHash struct {
+	Service
+	//
+	hashID uint64
 }
 
-func (s *ServiceRollPoling) LBStrategy() StrategyID {
-	return s.strategyID
+func (s *ServiceHash) hash(alladdrs []string) string {
+	// TODO other
+	index := s.hashID % uint64(len(alladdrs))
+	return alladdrs[index]
+}
+
+func (s *ServiceHash) GetServer(tags []string) (res []*ServersResponse, err error) {
+	logEntry := logrus.WithFields(logrus.Fields{
+		"func_name": "ServiceRollPoling GetServer",
+		"target":    s.target,
+		"tags":      strings.Join(tags, ","),
+	})
+	alladdrs, err := s.GetAlladdrs(s.serviceName, tags)
+	if err != nil {
+		return nil, err
+	}
+	if alladdrs == nil || len(alladdrs) == 0 {
+		return nil, nil
+	}
+	addr := s.hash(alladdrs)
+	logEntry.Infof("addr[%s]", addr)
+	sr := &ServersResponse{
+		ServerAddr: addr,
+		CurLoad:    0,
+		State:      serverpb.ServiceStats_STARTING,
+	}
+	res = append(res, sr)
+	return
 }
