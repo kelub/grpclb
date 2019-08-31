@@ -45,7 +45,6 @@ func NewService(target string, serviceName string, tags []string, hashID uint64)
 			loadClientMgr: loadClientMgr,
 			strategyID:    strategyID,
 		}
-
 	case Strategy_RollPoling:
 		service = &ServiceRollPoling{
 			Service: Service{

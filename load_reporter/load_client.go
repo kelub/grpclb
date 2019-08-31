@@ -154,12 +154,10 @@ func (lcm *LoadClientMgr) GetServers(serviceAddrs []string, useResCache bool) (r
 		for {
 			select {
 			case e := <-errch:
-				//TODO error handule and delete cache
 				logEntry.Errorln(e.err)
 				lcm.DeleteCache(e.serviceAddr)
 				return nil, e.err
 			case <-ctx.Done():
-				//TODO error handule and delete cache
 				logEntry.Error("getServer timeout")
 				return nil, nil
 			case rll := <-rch:
