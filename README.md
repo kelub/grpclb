@@ -2,9 +2,4 @@
 
 Load Balancer for gRPC with Golang
 
-             discovry-server
-         /                      ^
-        / discovry              | register
-       /                        |
-   client          ---->       server
-            lb
+![t2](https://github.com/kelub/grpclb/pics/lb.png)
