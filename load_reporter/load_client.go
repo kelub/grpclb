@@ -2,11 +2,16 @@ package load_reporter
 
 import (
 	"context"
-	"github.com/Sirupsen/logrus"
-	"google.golang.org/grpc"
 	serverpb "kelub/grpclb/pb/server"
 	"sync"
 	"time"
+
+	"github.com/Sirupsen/logrus"
+	"google.golang.org/grpc"
+)
+
+var (
+	LoadCacheInterval = 30 * time.Second
 )
 
 type LoadClientMgrer interface {
@@ -20,6 +25,8 @@ type LoadClient struct {
 	serviceAddr string
 	//load        int64
 	//state       serverpb.ServiceStats
+
+	createdAt time.Time
 }
 
 func NewLoadClient(ctx context.Context, serviceAddr string) (*LoadClient, error) {
@@ -33,6 +40,8 @@ func NewLoadClient(ctx context.Context, serviceAddr string) (*LoadClient, error)
 		lrc:         lrc,
 		serviceAddr: serviceAddr,
 		//ctx:         ctx,
+
+		createdAt: time.Now(),
 	}, nil
 }
 
@@ -66,7 +75,9 @@ type LoadClientMgr struct {
 	target              string
 	serviceAddrs        []string
 	LoadClientList      *sync.Map //addr: *LoadClient
-	LoadReporterResList *sync.Map //addr: *serverpb.LoadReporterResponse
+	LoadReporterResList *sync.Map //addr: *serverpb.LoadReporterResponse ,time.now()
+
+	loadCacheInterval time.Duration
 }
 
 type loaderror struct {
@@ -74,11 +85,18 @@ type loaderror struct {
 	err         error
 }
 
+type loadResTime struct {
+	loadRes   *serverpb.LoadReporterResponse
+	createdAt time.Time
+}
+
 func NewLoadClientMgr(target string) *LoadClientMgr {
 	lcm := &LoadClientMgr{
 		target:              target,
 		LoadClientList:      new(sync.Map),
 		LoadReporterResList: new(sync.Map),
+
+		loadCacheInterval: LoadCacheInterval,
 	}
 	return lcm
 }
@@ -101,7 +119,9 @@ func (lcm *LoadClientMgr) getServer(ctx context.Context,
 		errch <- e
 		return err
 	}
-	lcm.LoadReporterResList.Store(serviceAddr, lrr)
+	lcm.LoadReporterResList.Store(serviceAddr, &loadResTime{
+		lrr, time.Now(),
+	})
 	addrLrr[serviceAddr] = lrr
 	rch <- addrLrr
 
@@ -126,14 +146,23 @@ func (lcm *LoadClientMgr) GetServers(serviceAddrs []string, useResCache bool) (r
 	defer cancel()
 	var count = 0
 	var rcount = 0
-
+	now := time.Now()
 	for i := range serviceAddrs {
+		var isNewLoadClient = true
 		addr := serviceAddrs[i]
 		l, ok := lcm.LoadReporterResList.Load(addr)
-		if ok && useResCache {
-			r[addr] = l.(*serverpb.LoadReporterResponse)
-			logEntry.Info("cache!")
-		} else {
+		if ok {
+			if l.(*loadResTime).createdAt.Sub(now) > lcm.loadCacheInterval {
+				lcm.LoadReporterResList.Delete(addr)
+				isNewLoadClient = true
+			} else if useResCache {
+				r[addr] = l.(*loadResTime).loadRes
+				logEntry.Info("cache!")
+				isNewLoadClient = false
+			}
+		}
+
+		if isNewLoadClient {
 			var lc *LoadClient
 			v, ok := lcm.LoadClientList.Load(addr)
 			if ok {
