@@ -116,6 +116,9 @@ func (lcm *LoadClientMgr) getServer(ctx context.Context, lc *LoadClient) chan *L
 	rch := make(chan *LoadResult)
 
 	defer close(rch)
+	getServerTimeout := 100 * time.Millisecond
+	ctx, cancel := context.WithTimeout(ctx, getServerTimeout)
+	defer cancel()
 	lrr, err := lc.GetLoad(ctx)
 	if err != nil {
 		logEntry.Error(err)
@@ -151,10 +154,11 @@ func (lcm *LoadClientMgr) GetServers(serviceAddrs []string, useResCache bool) (r
 	r = make(map[string]*serverpb.LoadReporterResponse)
 	// rch := make(chan map[string]*serverpb.LoadReporterResponse, len(serviceAddrs))
 
-	LoadResult := make([]<-chan *LoadResult, len(serviceAddrs))
+	LoadResultChs := make([]<-chan *LoadResult, len(serviceAddrs))
 	ctx, cancel := context.WithTimeout(context.Background(), getServerTimeout)
 	defer cancel()
 	var count int64 = 0
+	var isWait bool = false
 	now := time.Now()
 	for i := range serviceAddrs {
 		var isNewLoadClient = true
@@ -172,6 +176,7 @@ func (lcm *LoadClientMgr) GetServers(serviceAddrs []string, useResCache bool) (r
 		}
 
 		if isNewLoadClient {
+			isWait = true
 			var lc *LoadClient
 			v, ok := lcm.LoadClientList.Load(addr)
 			if ok {
@@ -185,7 +190,7 @@ func (lcm *LoadClientMgr) GetServers(serviceAddrs []string, useResCache bool) (r
 			}
 			// go lcm.getServer1(ctx, lc, addr)
 			go func() {
-				LoadResult[atomic.LoadInt64(&count)] = lcm.getServer(ctx, lc)
+				LoadResultChs[atomic.LoadInt64(&count)] = lcm.getServer(ctx, lc)
 				atomic.AddInt64(&count, 1)
 			}()
 		}
@@ -196,20 +201,28 @@ func (lcm *LoadClientMgr) GetServers(serviceAddrs []string, useResCache bool) (r
 		default:
 		}
 	}
-	if count > 0 {
-		for i := range LoadResult {
-			loadResultCh := LoadResult[i]
-			select {
-			case <-ctx.Done():
-				logEntry.Error("getServer timeout")
-				return r, nil
-			case loadResult := <-loadResultCh:
-				if loadResult.Error == nil {
-					r[loadResult.Addr] = loadResult.Response
+	if isWait {
+		wg := sync.WaitGroup{}
+
+		for i := range LoadResultChs {
+			loadResultCh := LoadResultChs[i]
+			go func(lr <-chan *LoadResult) {
+				wg.Add(1)
+				defer wg.Done()
+				select {
+				case <-ctx.Done():
+					logEntry.Infoln(" ", ctx.Err())
+					return
+				case loadResult := <-lr:
+					if loadResult.Error == nil {
+						r[loadResult.Addr] = loadResult.Response
+					}
 				}
-			}
+			}(loadResultCh)
 		}
+		wg.Wait()
 	}
+
 	return
 }
 
