@@ -79,6 +79,7 @@ type LoadClientMgr struct {
 	LoadReporterResList *sync.Map //addr: *serverpb.LoadReporterResponse ,time.now()
 
 	loadCacheInterval time.Duration
+	getServerTimeout  time.Duration
 }
 
 type loaderror struct {
@@ -97,13 +98,14 @@ type loadResTime struct {
 	createdAt time.Time
 }
 
-func NewLoadClientMgr(target string) *LoadClientMgr {
+func NewLoadClientMgr(target string,loadCacheInterval,getServerTimeout time.Duration) *LoadClientMgr {
 	lcm := &LoadClientMgr{
 		target:              target,
 		LoadClientList:      new(sync.Map),
 		LoadReporterResList: new(sync.Map),
 
 		loadCacheInterval: LoadCacheInterval,
+		getServerTimeout: getServerTimeout,
 	}
 	return lcm
 }
@@ -116,8 +118,7 @@ func (lcm *LoadClientMgr) getServer(ctx context.Context, lc *LoadClient) chan *L
 	rch := make(chan *LoadResult)
 
 	defer close(rch)
-	getServerTimeout := 100 * time.Millisecond
-	ctx, cancel := context.WithTimeout(ctx, getServerTimeout)
+	ctx, cancel := context.WithTimeout(ctx, lcm.getServerTimeout)
 	defer cancel()
 	lrr, err := lc.GetLoad(ctx)
 	if err != nil {
@@ -148,14 +149,12 @@ func (lcm *LoadClientMgr) GetServers(serviceAddrs []string, useResCache bool) (r
 		"func_name":    "GetServers",
 		"serviceAddrs": serviceAddrs,
 	})
-	// TODO 配置化
-	getServerTimeout := 100 * time.Millisecond
 	lcm.serviceAddrs = serviceAddrs
 	r = make(map[string]*serverpb.LoadReporterResponse)
 	// rch := make(chan map[string]*serverpb.LoadReporterResponse, len(serviceAddrs))
 
 	LoadResultChs := make([]<-chan *LoadResult, len(serviceAddrs))
-	ctx, cancel := context.WithTimeout(context.Background(), getServerTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), lcm.getServerTimeout)
 	defer cancel()
 	var count int64 = 0
 	var isWait bool = false
