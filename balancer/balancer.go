@@ -26,21 +26,22 @@ type Balancerer interface {
 
 type Balancer struct {
 	Serverslist *sync.Map //target: Serviceer
+	Config *Config
 }
 
 func (b *Balancer) RefreshAllLoad() {
 	b.Serverslist.Range(func(key, value interface{}) bool {
 		target := key.(string)
 		service := value.(Serviceer)
-		b.refreshLoad(target, service)
+		if err := b.refreshLoad(target, service);err != nil{
+			return false
+		}
 		return true
 	})
 }
 
 func (b *Balancer) refresloop() {
-	// TODO 配置化 refreshInterval
-	refreshInterval := 5 * time.Second
-	t := time.NewTicker(refreshInterval)
+	t := time.NewTicker(b.Config.Balancer.refreshInterval)
 	defer t.Stop()
 	for {
 		select {
@@ -110,8 +111,10 @@ func (b *Balancer) targetToName(target string) (serviceName string, tags []strin
 
 // NewBalancer 创建Balancer，并开启定时刷新循环，返回Balancer。
 func NewBalancer() *Balancer {
+	config := DefaultConfig()
 	b := &Balancer{
 		Serverslist: new(sync.Map),
+		Config: config,
 	}
 	go b.refresloop()
 	return b
@@ -136,7 +139,7 @@ func (b *Balancer) GetServers(serviceName string, tags []string, hashID uint64) 
 		return server, nil
 	}
 
-	service, err := NewService(target, serviceName, tags, hashID)
+	service, err := NewService(target, serviceName, tags, hashID,b.Config.Discovry.consulAddr)
 	if err != nil {
 		return nil, err
 	}

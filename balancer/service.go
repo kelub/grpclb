@@ -7,7 +7,6 @@ import (
 	serverpb "kelub/grpclb/pb/server"
 	"sort"
 	"strings"
-	"time"
 )
 
 //
@@ -22,18 +21,16 @@ type Serviceer interface {
 
 // NewService 获取新的 Service 。
 // 创建服务发现以及负载管理器
-func NewService(target string, serviceName string, tags []string, hashID uint64) (Serviceer, error) {
-	// TODO 配置化
-	consulAddr := ":8500"
-	d, err := dis.NewDiscovry(consulAddr)
+func NewService(target string, serviceName string, tags []string, hashID uint64,config *Config) (Serviceer, error) {
+	d, err := dis.NewDiscovry(config.Discovry.consulAddr)
 	if err != nil {
 		return nil, err
 	}
-	// TODO GetStrategy
+	// TODO GetStrategy from consul
 	var service Serviceer
 	strategyID := Strategy_RollPoling
 
-	loadClientMgr := ld.NewLoadClientMgr(target)
+	loadClientMgr := ld.NewLoadClientMgr(target,config.Service.loadCacheInterval,config.Service.getServerTimeout)
 
 	switch strategyID {
 	case Strategy_LoadBalancer:
@@ -44,6 +41,7 @@ func NewService(target string, serviceName string, tags []string, hashID uint64)
 			discovry:      d,
 			loadClientMgr: loadClientMgr,
 			strategyID:    strategyID,
+			config: config,
 		}
 	case Strategy_RollPoling:
 		service = &ServiceRollPoling{
@@ -54,6 +52,7 @@ func NewService(target string, serviceName string, tags []string, hashID uint64)
 				discovry:      d,
 				loadClientMgr: loadClientMgr,
 				strategyID:    strategyID,
+				config: config,
 			},
 			index: 0,
 		}
@@ -66,6 +65,7 @@ func NewService(target string, serviceName string, tags []string, hashID uint64)
 				discovry:      d,
 				loadClientMgr: loadClientMgr,
 				strategyID:    strategyID,
+				config: config,
 			},
 			hashID: hashID,
 		}
@@ -83,6 +83,7 @@ type Service struct {
 	loadClientMgr *ld.LoadClientMgr //负载值处理
 
 	strategyID StrategyID //负载均衡策略
+	config *Config // 配置管理
 }
 
 // GetServer 获取服务器列表
@@ -120,10 +121,9 @@ func (s *Service) GetAlladdrs(serviceName string, tags []string) ([]string, erro
 		"serviceName": serviceName,
 		"tags":        strings.Join(tags, ","),
 	})
-	resolveWaitTime := time.Duration(1 * time.Second)
 	alladdrs := make([]string, 0)
 	for _, tag := range tags {
-		addrs, err := s.discovry.NameResolve(serviceName, tag, resolveWaitTime)
+		addrs, err := s.discovry.NameResolve(serviceName, tag, s.config.Discovry.resolveWaitTime)
 		if err != nil {
 			return nil, err
 		}

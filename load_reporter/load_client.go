@@ -2,11 +2,17 @@ package load_reporter
 
 import (
 	"context"
-	"github.com/Sirupsen/logrus"
-	"google.golang.org/grpc"
 	serverpb "kelub/grpclb/pb/server"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/Sirupsen/logrus"
+	"google.golang.org/grpc"
+)
+
+var (
+	LoadCacheInterval = 30 * time.Second
 )
 
 type LoadClientMgrer interface {
@@ -20,6 +26,8 @@ type LoadClient struct {
 	serviceAddr string
 	//load        int64
 	//state       serverpb.ServiceStats
+
+	createdAt time.Time
 }
 
 func NewLoadClient(ctx context.Context, serviceAddr string) (*LoadClient, error) {
@@ -33,6 +41,8 @@ func NewLoadClient(ctx context.Context, serviceAddr string) (*LoadClient, error)
 		lrc:         lrc,
 		serviceAddr: serviceAddr,
 		//ctx:         ctx,
+
+		createdAt: time.Now(),
 	}, nil
 }
 
@@ -66,7 +76,10 @@ type LoadClientMgr struct {
 	target              string
 	serviceAddrs        []string
 	LoadClientList      *sync.Map //addr: *LoadClient
-	LoadReporterResList *sync.Map //addr: *serverpb.LoadReporterResponse
+	LoadReporterResList *sync.Map //addr: *serverpb.LoadReporterResponse ,time.now()
+
+	loadCacheInterval time.Duration
+	getServerTimeout  time.Duration
 }
 
 type loaderror struct {
@@ -74,38 +87,58 @@ type loaderror struct {
 	err         error
 }
 
-func NewLoadClientMgr(target string) *LoadClientMgr {
+type LoadResult struct {
+	Error    error
+	Addr     string
+	Response *serverpb.LoadReporterResponse
+}
+
+type loadResTime struct {
+	loadRes   *serverpb.LoadReporterResponse
+	createdAt time.Time
+}
+
+func NewLoadClientMgr(target string,loadCacheInterval,getServerTimeout time.Duration) *LoadClientMgr {
 	lcm := &LoadClientMgr{
 		target:              target,
 		LoadClientList:      new(sync.Map),
 		LoadReporterResList: new(sync.Map),
+
+		loadCacheInterval: LoadCacheInterval,
+		getServerTimeout: getServerTimeout,
 	}
 	return lcm
 }
 
-func (lcm *LoadClientMgr) getServer(ctx context.Context,
-	errch chan *loaderror, rch chan map[string]*serverpb.LoadReporterResponse,
-	lc *LoadClient, serviceAddr string) error {
+func (lcm *LoadClientMgr) getServer(ctx context.Context, lc *LoadClient) chan *LoadResult {
 	logEntry := logrus.WithFields(logrus.Fields{
 		"func_name":   "getServer",
-		"serviceAddr": serviceAddr,
+		"serviceAddr": lc.serviceAddr,
 	})
-	addrLrr := make(map[string]*serverpb.LoadReporterResponse)
+	rch := make(chan *LoadResult)
+
+	defer close(rch)
+	ctx, cancel := context.WithTimeout(ctx, lcm.getServerTimeout)
+	defer cancel()
 	lrr, err := lc.GetLoad(ctx)
 	if err != nil {
 		logEntry.Error(err)
-		e := &loaderror{
-			serviceAddr: serviceAddr,
-			err:         err,
+		rch <- &LoadResult{
+			Error:    err,
+			Addr:     lc.serviceAddr,
+			Response: nil,
 		}
-		errch <- e
-		return err
+		return rch
 	}
-	lcm.LoadReporterResList.Store(serviceAddr, lrr)
-	addrLrr[serviceAddr] = lrr
-	rch <- addrLrr
-
-	return nil
+	lcm.LoadReporterResList.Store(lc.serviceAddr, &loadResTime{
+		lrr, time.Now(),
+	})
+	rch <- &LoadResult{
+		Error:    nil,
+		Addr:     lc.serviceAddr,
+		Response: lrr,
+	}
+	return rch
 }
 
 // GetServers 获取服务负载列表
@@ -116,24 +149,33 @@ func (lcm *LoadClientMgr) GetServers(serviceAddrs []string, useResCache bool) (r
 		"func_name":    "GetServers",
 		"serviceAddrs": serviceAddrs,
 	})
-	// TODO 配置化
-	getServerTimeout := 100 * time.Millisecond
 	lcm.serviceAddrs = serviceAddrs
 	r = make(map[string]*serverpb.LoadReporterResponse)
-	rch := make(chan map[string]*serverpb.LoadReporterResponse, len(serviceAddrs))
-	errch := make(chan *loaderror)
-	ctx, cancel := context.WithTimeout(context.Background(), getServerTimeout)
-	defer cancel()
-	var count = 0
-	var rcount = 0
+	// rch := make(chan map[string]*serverpb.LoadReporterResponse, len(serviceAddrs))
 
+	LoadResultChs := make([]<-chan *LoadResult, len(serviceAddrs))
+	ctx, cancel := context.WithTimeout(context.Background(), lcm.getServerTimeout)
+	defer cancel()
+	var count int64 = 0
+	var isWait bool = false
+	now := time.Now()
 	for i := range serviceAddrs {
+		var isNewLoadClient = true
 		addr := serviceAddrs[i]
 		l, ok := lcm.LoadReporterResList.Load(addr)
-		if ok && useResCache {
-			r[addr] = l.(*serverpb.LoadReporterResponse)
-			logEntry.Info("cache!")
-		} else {
+		if ok {
+			if l.(*loadResTime).createdAt.Sub(now) > lcm.loadCacheInterval {
+				lcm.LoadReporterResList.Delete(addr)
+				isNewLoadClient = true
+			} else if useResCache {
+				r[addr] = l.(*loadResTime).loadRes
+				logEntry.Info("cache!")
+				isNewLoadClient = false
+			}
+		}
+
+		if isNewLoadClient {
+			isWait = true
 			var lc *LoadClient
 			v, ok := lcm.LoadClientList.Load(addr)
 			if ok {
@@ -145,33 +187,41 @@ func (lcm *LoadClientMgr) GetServers(serviceAddrs []string, useResCache bool) (r
 				}
 				lcm.LoadClientList.Store(addr, lc)
 			}
-			go lcm.getServer(ctx, errch, rch, lc, addr)
-			count++
+			// go lcm.getServer1(ctx, lc, addr)
+			go func() {
+				LoadResultChs[atomic.LoadInt64(&count)] = lcm.getServer(ctx, lc)
+				atomic.AddInt64(&count, 1)
+			}()
 		}
-
+		select {
+		case <-ctx.Done():
+			logEntry.Error("getServer timeout advance")
+			return r, nil
+		default:
+		}
 	}
-	if count > 0 {
-		for {
-			select {
-			case e := <-errch:
-				logEntry.Errorln(e.err)
-				lcm.DeleteCache(e.serviceAddr)
-				return nil, e.err
-			case <-ctx.Done():
-				logEntry.Error("getServer timeout")
-				return nil, nil
-			case rll := <-rch:
-				for k, v := range rll {
-					r[k] = v
-				}
-				rcount++
-				if rcount == count {
+	if isWait {
+		wg := sync.WaitGroup{}
+
+		for i := range LoadResultChs {
+			loadResultCh := LoadResultChs[i]
+			go func(lr <-chan *LoadResult) {
+				wg.Add(1)
+				defer wg.Done()
+				select {
+				case <-ctx.Done():
+					logEntry.Infoln(" ", ctx.Err())
 					return
+				case loadResult := <-lr:
+					if loadResult.Error == nil {
+						r[loadResult.Addr] = loadResult.Response
+					}
 				}
-			}
+			}(loadResultCh)
 		}
-
+		wg.Wait()
 	}
+
 	return
 }
 
