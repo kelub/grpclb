@@ -6,6 +6,7 @@ import (
 	ld "kelub/grpclb/load_reporter"
 	serverpb "kelub/grpclb/pb/server"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -22,14 +23,24 @@ type Serviceer interface {
 // NewService 获取新的 Service 。
 // 创建服务发现以及负载管理器
 func NewService(target string, serviceName string, tags []string, hashID uint64,config *Config) (Serviceer, error) {
+	var err error
 	d, err := dis.NewDiscovry(config.Discovry.consulAddr)
 	if err != nil {
 		return nil, err
 	}
-	// TODO GetStrategy from consul
 	var service Serviceer
-	strategyID := Strategy_RollPoling
+	var strategyID StrategyID
 
+	id,err := d.GetStrategyID(target)
+	if err != nil{
+		return nil, err
+	}
+
+	strategy,err := strconv.Atoi(id)
+	if err != nil{
+		return nil, err
+	}
+	strategyID = StrategyID(strategy)
 	loadClientMgr := ld.NewLoadClientMgr(target,config.Service.loadCacheInterval,config.Service.getServerTimeout)
 
 	switch strategyID {

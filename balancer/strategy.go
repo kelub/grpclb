@@ -14,3 +14,4 @@ const (
 type Strategy struct {
 	StrategyID int32
 }
+
