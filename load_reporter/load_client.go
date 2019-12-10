@@ -104,7 +104,7 @@ func NewLoadClientMgr(target string,loadCacheInterval,getServerTimeout time.Dura
 		LoadClientList:      new(sync.Map),
 		LoadReporterResList: new(sync.Map),
 
-		loadCacheInterval: LoadCacheInterval,
+		loadCacheInterval: loadCacheInterval,
 		getServerTimeout: getServerTimeout,
 	}
 	return lcm
