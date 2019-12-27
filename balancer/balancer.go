@@ -26,14 +26,14 @@ type Balancerer interface {
 
 type Balancer struct {
 	Serverslist *sync.Map //target: Serviceer
-	Config *Config
+	Config      *Config
 }
 
 func (b *Balancer) RefreshAllLoad() {
 	b.Serverslist.Range(func(key, value interface{}) bool {
 		target := key.(string)
 		service := value.(Serviceer)
-		if err := b.refreshLoad(target, service);err != nil{
+		if err := b.refreshLoad(target, service); err != nil {
 			return false
 		}
 		return true
@@ -114,7 +114,7 @@ func NewBalancer() *Balancer {
 	config := DefaultConfig()
 	b := &Balancer{
 		Serverslist: new(sync.Map),
-		Config: config,
+		Config:      config,
 	}
 	go b.refresloop()
 	return b
@@ -139,7 +139,7 @@ func (b *Balancer) GetServers(serviceName string, tags []string, hashID uint64) 
 		return server, nil
 	}
 
-	service, err := NewService(target, serviceName, tags, hashID,b.Config.Discovry.consulAddr)
+	service, err := NewService(target, serviceName, tags, hashID, b.Config)
 	if err != nil {
 		return nil, err
 	}
