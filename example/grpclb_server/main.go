@@ -18,6 +18,7 @@ import (
 var runningRPC int64 = 0
 
 var opt example.Options
+var defaultServiceStrategy = "Router/Strategy"
 
 func main() {
 	flag.Parse()
@@ -53,6 +54,8 @@ func init() {
 	flag.StringVar(&opt.ServerName, "name", "gateserver", "Server address. Default: gateserver")
 	flag.StringVar(&opt.ServerID, "serverid", "9999", "Server address. Default: 9999")
 	flag.StringVar(&opt.ServerTags, "tags", "master_1", "service groups. Default: master_1")
+
+	flag.StringVar(&opt.Strategy, "strategy", "0", "service strategy. Default: 0")
 
 	flag.StringVar(&opt.ConsulAddress, "consulAddr", "127.0.0.1", "Server address. Default: 127.0.0.1")
 	flag.IntVar(&opt.HealthPort, "healthPort", 8082, "Server HealthPort. Default: 8082")
@@ -155,6 +158,17 @@ func RegisterToConsul() error {
 	if err != nil {
 		return nil
 	}
+
+	for _, tag := range tags {
+		Pair := &consulapi.KVPair{}
+		Pair.Key = defaultServiceStrategy + "/" + opt.ServerName + "/" + tag
+		Pair.Value = []byte(opt.Strategy)
+		_, err := consulClient.KV().Put(Pair, nil)
+		if err != nil {
+			return nil
+		}
+	}
+
 	logEntry.Infof("ServiceRegister")
 	httpServer := example.CreateHttpServer()
 	go func() {

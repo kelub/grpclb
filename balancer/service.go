@@ -22,7 +22,7 @@ type Serviceer interface {
 
 // NewService 获取新的 Service 。
 // 创建服务发现以及负载管理器
-func NewService(target string, serviceName string, tags []string, hashID uint64,config *Config) (Serviceer, error) {
+func NewService(target string, serviceName string, tags []string, hashID uint64, config *Config) (Serviceer, error) {
 	var err error
 	d, err := dis.NewDiscovry(config.Discovry.consulAddr)
 	if err != nil {
@@ -31,17 +31,17 @@ func NewService(target string, serviceName string, tags []string, hashID uint64,
 	var service Serviceer
 	var strategyID StrategyID
 
-	id,err := d.GetStrategyID(target)
-	if err != nil{
+	id, err := d.GetStrategyID(target, config.Discovry.serviceStrategy)
+	if err != nil {
 		return nil, err
 	}
 
-	strategy,err := strconv.Atoi(id)
-	if err != nil{
+	strategy, err := strconv.Atoi(id)
+	if err != nil {
 		return nil, err
 	}
 	strategyID = StrategyID(strategy)
-	loadClientMgr := ld.NewLoadClientMgr(target,config.Service.loadCacheInterval,config.Service.getServerTimeout)
+	loadClientMgr := ld.NewLoadClientMgr(target, config.Service.loadCacheInterval, config.Service.getServerTimeout)
 
 	switch strategyID {
 	case Strategy_LoadBalancer:
@@ -52,7 +52,7 @@ func NewService(target string, serviceName string, tags []string, hashID uint64,
 			discovry:      d,
 			loadClientMgr: loadClientMgr,
 			strategyID:    strategyID,
-			config: config,
+			config:        config,
 		}
 	case Strategy_RollPoling:
 		service = &ServiceRollPoling{
@@ -63,7 +63,7 @@ func NewService(target string, serviceName string, tags []string, hashID uint64,
 				discovry:      d,
 				loadClientMgr: loadClientMgr,
 				strategyID:    strategyID,
-				config: config,
+				config:        config,
 			},
 			index: 0,
 		}
@@ -76,7 +76,7 @@ func NewService(target string, serviceName string, tags []string, hashID uint64,
 				discovry:      d,
 				loadClientMgr: loadClientMgr,
 				strategyID:    strategyID,
-				config: config,
+				config:        config,
 			},
 			hashID: hashID,
 		}
@@ -94,7 +94,7 @@ type Service struct {
 	loadClientMgr *ld.LoadClientMgr //负载值处理
 
 	strategyID StrategyID //负载均衡策略
-	config *Config // 配置管理
+	config     *Config    // 配置管理
 }
 
 // GetServer 获取服务器列表

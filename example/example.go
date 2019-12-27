@@ -9,4 +9,6 @@ type Options struct {
 	HealthPort    int    `flag:"HealthPort"`
 	ProfPort      int    `flag:"prof_port"`
 	ServerTags    string `flag:"server_tags"`
+
+	Strategy string
 }

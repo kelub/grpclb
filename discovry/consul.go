@@ -44,10 +44,14 @@ func (d *discovry) NameResolve(serviceName string, tag string, resolveWaitTime t
 	return addrs, nil
 }
 
-func (d *discovry) GetStrategyID(target string)(string, error){
-	kp, _, err := d.consulClient.KV().Get(target,nil)
+func (d *discovry) GetStrategyID(target string, routerPath string) (string, error) {
+	if target == "" || routerPath == "" {
+		return "", fmt.Errorf("target or routerPath is nil")
+	}
+	key := fmt.Sprintf("%s/%s", routerPath, target)
+	kp, _, err := d.consulClient.KV().Get(key, nil)
 	if err != nil {
 		return "", fmt.Errorf("GetStrategyID err: %v", err)
 	}
-	return string(kp.Value),nil
+	return string(kp.Value), nil
 }
