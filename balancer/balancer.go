@@ -7,6 +7,7 @@ package balancer
 import (
 	"github.com/Sirupsen/logrus"
 	serverpb "kelub/grpclb/pb/server"
+	"kelub/grpclb/util"
 	"sort"
 	"strings"
 	"sync"
@@ -29,15 +30,49 @@ type Balancer struct {
 	Config      *Config
 }
 
-func (b *Balancer) RefreshAllLoad() {
-	b.Serverslist.Range(func(key, value interface{}) bool {
-		target := key.(string)
-		service := value.(Serviceer)
-		if err := b.refreshLoad(target, service); err != nil {
-			return false
-		}
-		return true
+// NewBalancer 创建Balancer，并开启定时刷新循环，返回Balancer。
+func NewBalancer() *Balancer {
+	config := DefaultConfig()
+	b := &Balancer{
+		Serverslist: new(sync.Map),
+		Config:      config,
+	}
+	go b.refresloop()
+	return b
+}
+
+// GetServers获取服务器信息列表
+func (b *Balancer) GetServers(serviceName string, tags []string, hashID uint64) ([]*ServersResponse, error) {
+	logEntry := logrus.WithFields(logrus.Fields{
+		"func_name":   "GetServers",
+		"serviceName": serviceName,
 	})
+	target := b.nameToTarget(serviceName, tags)
+	logEntry.Debugln("target:", target)
+	s, ok := b.Serverslist.Load(target)
+	if ok {
+		service := s.(Serviceer)
+		server, err := service.GetServer(tags)
+		if err != nil {
+			b.Serverslist.Delete(target)
+			return nil, err
+		}
+		return server, nil
+	}
+
+	service, err := NewService(target, serviceName, tags, hashID, b.Config)
+	if err != nil {
+		return nil, err
+	}
+	b.Serverslist.Store(target, service)
+	server, err := service.GetServer(tags)
+	if err != nil {
+		b.Serverslist.Delete(target)
+		return nil, err
+	}
+
+	//TODO load value handler
+	return server, nil
 }
 
 func (b *Balancer) refresloop() {
@@ -49,6 +84,19 @@ func (b *Balancer) refresloop() {
 			b.RefreshAllLoad()
 		}
 	}
+}
+
+func (b *Balancer) RefreshAllLoad() {
+	wg := util.WaitGroupWrapper{}
+	b.Serverslist.Range(func(key, value interface{}) bool {
+		target := key.(string)
+		service := value.(Serviceer)
+		wg.Wrap(func() {
+			b.refreshLoad(target, service)
+		})
+		return true
+	})
+	wg.Wait()
 }
 
 // refreshLoad 刷新负载值
@@ -107,49 +155,4 @@ func (b *Balancer) targetToName(target string) (serviceName string, tags []strin
 	serviceName = s[0]
 	tags = s[1:]
 	return
-}
-
-// NewBalancer 创建Balancer，并开启定时刷新循环，返回Balancer。
-func NewBalancer() *Balancer {
-	config := DefaultConfig()
-	b := &Balancer{
-		Serverslist: new(sync.Map),
-		Config:      config,
-	}
-	go b.refresloop()
-	return b
-}
-
-// GetServers获取服务器信息列表
-func (b *Balancer) GetServers(serviceName string, tags []string, hashID uint64) ([]*ServersResponse, error) {
-	logEntry := logrus.WithFields(logrus.Fields{
-		"func_name":   "GetServers",
-		"serviceName": serviceName,
-	})
-	target := b.nameToTarget(serviceName, tags)
-	logEntry.Debugln("target:", target)
-	s, ok := b.Serverslist.Load(target)
-	if ok {
-		service := s.(Serviceer)
-		server, err := service.GetServer(tags)
-		if err != nil {
-			b.Serverslist.Delete(target)
-			return nil, err
-		}
-		return server, nil
-	}
-
-	service, err := NewService(target, serviceName, tags, hashID, b.Config)
-	if err != nil {
-		return nil, err
-	}
-	b.Serverslist.Store(target, service)
-	server, err := service.GetServer(tags)
-	if err != nil {
-		b.Serverslist.Delete(target)
-		return nil, err
-	}
-
-	//TODO load value handler
-	return server, nil
 }
