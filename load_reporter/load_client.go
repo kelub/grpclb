@@ -98,14 +98,14 @@ type loadResTime struct {
 	createdAt time.Time
 }
 
-func NewLoadClientMgr(target string,loadCacheInterval,getServerTimeout time.Duration) *LoadClientMgr {
+func NewLoadClientMgr(target string, loadCacheInterval, getServerTimeout time.Duration) *LoadClientMgr {
 	lcm := &LoadClientMgr{
 		target:              target,
 		LoadClientList:      new(sync.Map),
 		LoadReporterResList: new(sync.Map),
 
 		loadCacheInterval: loadCacheInterval,
-		getServerTimeout: getServerTimeout,
+		getServerTimeout:  getServerTimeout,
 	}
 	return lcm
 }
@@ -116,10 +116,19 @@ func (lcm *LoadClientMgr) getServer(ctx context.Context, lc *LoadClient) chan *L
 		"serviceAddr": lc.serviceAddr,
 	})
 	rch := make(chan *LoadResult)
-
 	defer close(rch)
-	ctx, cancel := context.WithTimeout(ctx, lcm.getServerTimeout)
-	defer cancel()
+	select {
+	case <-ctx.Done():
+		rch <- &LoadResult{
+			Error:    ctx.Err(),
+			Addr:     lc.serviceAddr,
+			Response: nil,
+		}
+		return rch
+	default:
+	}
+	//ctx, cancel := context.WithTimeout(ctx, lcm.getServerTimeout)
+	//defer cancel()
 	lrr, err := lc.GetLoad(ctx)
 	if err != nil {
 		logEntry.Error(err)
