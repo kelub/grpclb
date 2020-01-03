@@ -1,7 +1,7 @@
 package balancer
 
 import (
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	dis "kelub/grpclb/discovry"
 	ld "kelub/grpclb/load_reporter"
 	serverpb "kelub/grpclb/pb/server"

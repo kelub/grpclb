@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	consulapi "github.com/hashicorp/consul/api"
 	"google.golang.org/grpc"
 	"kelub/grpclb/example"

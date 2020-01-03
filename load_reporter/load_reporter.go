@@ -4,7 +4,7 @@ package load_reporter
 
 import (
 	"context"
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	serverpb "kelub/grpclb/pb/server"
 )

@@ -5,7 +5,7 @@
 package balancer
 
 import (
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	serverpb "kelub/grpclb/pb/server"
 	"kelub/grpclb/util"
 	"sort"
