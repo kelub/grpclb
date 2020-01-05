@@ -95,6 +95,8 @@ type Service struct {
 
 	strategyID StrategyID //负载均衡策略
 	config     *Config    // 配置管理
+
+	addrs []string // 服务地址
 }
 
 // GetServer 获取服务器列表
@@ -155,21 +157,15 @@ func (s *Service) LBStrategy() StrategyID {
 	return s.strategyID
 }
 
+func (s *Service) refreshAlladdrs() {
+
+}
+
 // Roll Poling
 type ServiceRollPoling struct {
 	Service
 	//当前索引
 	index int
-}
-
-func (s *ServiceRollPoling) rollPoling(alladdrs []string) string {
-	sort.Strings(alladdrs)
-	i := s.index % len(alladdrs)
-	s.index++
-	if s.index >= len(alladdrs) {
-		s.index = 0
-	}
-	return alladdrs[i]
 }
 
 func (s *ServiceRollPoling) GetServer(tags []string) (res []*ServersResponse, err error) {
@@ -199,17 +195,21 @@ func (s *ServiceRollPoling) GetServer(tags []string) (res []*ServersResponse, er
 	return
 }
 
+func (s *ServiceRollPoling) rollPoling(alladdrs []string) string {
+	sort.Strings(alladdrs)
+	i := s.index % len(alladdrs)
+	s.index++
+	if s.index >= len(alladdrs) {
+		s.index = 0
+	}
+	return alladdrs[i]
+}
+
 // Hash
 type ServiceHash struct {
 	Service
 	//
 	hashID uint64
-}
-
-func (s *ServiceHash) hash(alladdrs []string) string {
-	// TODO other
-	index := s.hashID % uint64(len(alladdrs))
-	return alladdrs[index]
 }
 
 func (s *ServiceHash) GetServer(tags []string) (res []*ServersResponse, err error) {
@@ -234,4 +234,10 @@ func (s *ServiceHash) GetServer(tags []string) (res []*ServersResponse, err erro
 	}
 	res = append(res, sr)
 	return
+}
+
+func (s *ServiceHash) hash(alladdrs []string) string {
+	// TODO other
+	index := s.hashID % uint64(len(alladdrs))
+	return alladdrs[index]
 }

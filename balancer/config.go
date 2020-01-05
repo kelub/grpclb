@@ -16,6 +16,9 @@ type Config struct {
 		// serviceStrategy 服务路由策略kv 路径 默认规则: Router/Strategy
 		// 例如获取 target 的负载均衡策略 key: Router/Strategy/<target>
 		serviceStrategy string
+
+		// 更新服务地址时间间隔 默认5s
+		discovryInterval time.Duration
 	}
 	Service struct {
 		// 得到 一组服务超时时间，默认 100 ms
