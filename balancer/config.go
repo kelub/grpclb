@@ -32,10 +32,11 @@ func DefaultConfig() *Config {
 	return &Config{
 		Balancer: struct{ refreshInterval time.Duration }{refreshInterval: 5 * time.Second},
 		Discovry: struct {
-			consulAddr      string
-			resolveWaitTime time.Duration
-			serviceStrategy string
-		}{consulAddr: ":8500", resolveWaitTime: 100 * time.Millisecond, serviceStrategy: "Router/Strategy"},
+			consulAddr       string
+			resolveWaitTime  time.Duration
+			serviceStrategy  string
+			discovryInterval time.Duration
+		}{consulAddr: ":8500", resolveWaitTime: 100 * time.Millisecond, serviceStrategy: "Router/Strategy", discovryInterval: 5 * time.Second},
 		Service: struct {
 			getServerTimeout  time.Duration
 			loadCacheInterval time.Duration

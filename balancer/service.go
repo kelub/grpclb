@@ -18,6 +18,8 @@ type Serviceer interface {
 	LoadClientMgr() *ld.LoadClientMgr
 	// 获取负载策略
 	LBStrategy() StrategyID
+	//refreshAlladdrs(ctx context.Context, serviceName string, tags []string)
+	//Stop()
 }
 
 // NewService 获取新的 Service 。
@@ -95,8 +97,7 @@ type Service struct {
 
 	strategyID StrategyID //负载均衡策略
 	config     *Config    // 配置管理
-
-	addrs []string // 服务地址
+	addrs      []string
 }
 
 // GetServer 获取服务器列表
@@ -157,9 +158,43 @@ func (s *Service) LBStrategy() StrategyID {
 	return s.strategyID
 }
 
-func (s *Service) refreshAlladdrs() {
-
-}
+//func (s *Service) refreshAlladdrs(ctx context.Context, serviceName string, tags []string) {
+//	t := time.NewTimer(s.config.Discovry.discovryInterval)
+//	var tempDelay time.Duration // how long to sleep when failed
+//	var tempRetry = 0
+//	for {
+//		select {
+//		case <-ctx.Done():
+//			return
+//		case <-t.C:
+//			addrs, err := s.GetAlladdrs(serviceName, tags)
+//			if err != nil {
+//				if tempRetry > 3 {
+//					logrus.Errorf("refreshAlladdrs error, tempRetry = 3 err:", err)
+//				}
+//				if tempDelay == 0 {
+//					tempDelay = s.config.Discovry.resolveWaitTime
+//				} else {
+//					tempDelay *= 2
+//				}
+//				if max := 10 * time.Second; tempDelay > max {
+//					tempDelay = max
+//				}
+//				timer := time.NewTimer(tempDelay)
+//				select {
+//				case <-timer.C:
+//				case <-ctx.Done():
+//					timer.Stop()
+//					return
+//				}
+//				tempRetry++
+//				continue
+//			}
+//			tempDelay = 0
+//			s.addrs = addrs
+//		}
+//	}
+//}
 
 // Roll Poling
 type ServiceRollPoling struct {
@@ -240,4 +275,10 @@ func (s *ServiceHash) hash(alladdrs []string) string {
 	// TODO other
 	index := s.hashID % uint64(len(alladdrs))
 	return alladdrs[index]
+}
+
+func (s *ServiceHash) hashRing(alladdrs []string) string {
+	if s.addrs == nil || len(s.addrs) == 0 {
+
+	}
 }
