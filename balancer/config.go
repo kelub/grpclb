@@ -23,8 +23,11 @@ type Config struct {
 	Service struct {
 		// 得到 一组服务超时时间，默认 100 ms
 		getServerTimeout time.Duration
-		// 负载值缓存最大时间  30 * time.Second
-		loadCacheInterval time.Duration
+		//// 负载值缓存最大时间  30 * time.Second
+		//loadCacheInterval time.Duration
+
+		// 刷新负载值时间间隔，默认5s
+		refreshInterval time.Duration
 	}
 }
 

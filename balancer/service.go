@@ -43,7 +43,7 @@ func NewService(target string, serviceName string, tags []string, hashID uint64,
 		return nil, err
 	}
 	strategyID = StrategyID(strategy)
-	loadClientMgr := ld.NewLoadClientMgr(target, config.Service.loadCacheInterval, config.Service.getServerTimeout)
+	loadClientMgr := ld.NewLoadClientMgr(target, config.Service.refreshInterval, config.Service.getServerTimeout)
 
 	switch strategyID {
 	case Strategy_LoadBalancer:

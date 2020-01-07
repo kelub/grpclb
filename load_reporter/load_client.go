@@ -4,7 +4,6 @@ import (
 	"context"
 	serverpb "kelub/grpclb/pb/server"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -76,10 +75,12 @@ type LoadClientMgr struct {
 	target              string
 	serviceAddrs        []string
 	LoadClientList      *sync.Map //addr: *LoadClient
-	LoadReporterResList *sync.Map //addr: *serverpb.LoadReporterResponse ,time.now()
+	LoadReporterResList serversResult
 
-	loadCacheInterval time.Duration
-	getServerTimeout  time.Duration
+	refreshInterval  time.Duration
+	getServerTimeout time.Duration
+
+	cancel context.CancelFunc
 }
 
 type loaderror struct {
@@ -98,15 +99,19 @@ type loadResTime struct {
 	createdAt time.Time
 }
 
-func NewLoadClientMgr(target string, loadCacheInterval, getServerTimeout time.Duration) *LoadClientMgr {
-	lcm := &LoadClientMgr{
-		target:              target,
-		LoadClientList:      new(sync.Map),
-		LoadReporterResList: new(sync.Map),
+type serversResult map[string]*serverpb.LoadReporterResponse
 
-		loadCacheInterval: loadCacheInterval,
-		getServerTimeout:  getServerTimeout,
+func NewLoadClientMgr(target string, refreshInterval, getServerTimeout time.Duration) *LoadClientMgr {
+	ctx, cancel := context.WithCancel(context.Background())
+	lcm := &LoadClientMgr{
+		target:         target,
+		LoadClientList: new(sync.Map),
+
+		refreshInterval:  refreshInterval,
+		getServerTimeout: getServerTimeout,
+		cancel:           cancel,
 	}
+	go lcm.refresloop(ctx)
 	return lcm
 }
 
@@ -117,36 +122,37 @@ func (lcm *LoadClientMgr) getServer(ctx context.Context, lc *LoadClient) chan *L
 	})
 	rch := make(chan *LoadResult)
 	defer close(rch)
-	select {
-	case <-ctx.Done():
-		rch <- &LoadResult{
-			Error:    ctx.Err(),
-			Addr:     lc.serviceAddr,
-			Response: nil,
+	go func() {
+		select {
+		case <-ctx.Done():
+			rch <- &LoadResult{
+				Error:    ctx.Err(),
+				Addr:     lc.serviceAddr,
+				Response: nil,
+			}
+			return
+		default:
 		}
-		return rch
-	default:
-	}
-	//ctx, cancel := context.WithTimeout(ctx, lcm.getServerTimeout)
-	//defer cancel()
-	lrr, err := lc.GetLoad(ctx)
-	if err != nil {
-		logEntry.Error(err)
-		rch <- &LoadResult{
-			Error:    err,
-			Addr:     lc.serviceAddr,
-			Response: nil,
+
+		lrr, err := lc.GetLoad(ctx)
+		if err != nil {
+			logEntry.Error(err)
+			rch <- &LoadResult{
+				Error:    err,
+				Addr:     lc.serviceAddr,
+				Response: nil,
+			}
+			return
 		}
-		return rch
-	}
-	lcm.LoadReporterResList.Store(lc.serviceAddr, &loadResTime{
-		lrr, time.Now(),
-	})
-	rch <- &LoadResult{
-		Error:    nil,
-		Addr:     lc.serviceAddr,
-		Response: lrr,
-	}
+		//lcm.LoadReporterResList.Store(lc.serviceAddr, &loadResTime{
+		//	lrr, time.Now(),
+		//})
+		rch <- &LoadResult{
+			Error:    nil,
+			Addr:     lc.serviceAddr,
+			Response: lrr,
+		}
+	}()
 	return rch
 }
 
@@ -158,85 +164,106 @@ func (lcm *LoadClientMgr) GetServers(serviceAddrs []string, useResCache bool) (r
 		"func_name":    "GetServers",
 		"serviceAddrs": serviceAddrs,
 	})
+	logEntry.Info("")
 	lcm.serviceAddrs = serviceAddrs
-	r = make(map[string]*serverpb.LoadReporterResponse)
-	// rch := make(chan map[string]*serverpb.LoadReporterResponse, len(serviceAddrs))
+	return lcm.LoadReporterResList, nil
+}
 
-	LoadResultChs := make([]<-chan *LoadResult, len(serviceAddrs))
-	ctx, cancel := context.WithTimeout(context.Background(), lcm.getServerTimeout)
-	defer cancel()
-	var count int64 = 0
-	var isWait bool = false
-	now := time.Now()
-	for i := range serviceAddrs {
-		var isNewLoadClient = true
-		addr := serviceAddrs[i]
-		l, ok := lcm.LoadReporterResList.Load(addr)
-		if ok {
-			if l.(*loadResTime).createdAt.Sub(now) > lcm.loadCacheInterval {
-				lcm.LoadReporterResList.Delete(addr)
-				isNewLoadClient = true
-			} else if useResCache {
-				r[addr] = l.(*loadResTime).loadRes
-				logEntry.Info("cache!")
-				isNewLoadClient = false
-			}
-		}
+func (lcm *LoadClientMgr) DeleteCache(serviceAddr string) {
+	//delete lcm.LoadClientList
+	lcm.LoadClientList.Delete(serviceAddr)
+}
 
-		if isNewLoadClient {
-			isWait = true
-			var lc *LoadClient
-			v, ok := lcm.LoadClientList.Load(addr)
-			if ok {
-				lc = v.(*LoadClient)
-			} else {
-				lc, err = NewLoadClient(ctx, addr)
-				if err != nil {
-					return nil, err
-				}
-				lcm.LoadClientList.Store(addr, lc)
-			}
-			// go lcm.getServer1(ctx, lc, addr)
-			go func() {
-				LoadResultChs[atomic.LoadInt64(&count)] = lcm.getServer(ctx, lc)
-				atomic.AddInt64(&count, 1)
-			}()
-		}
+func (lcm *LoadClientMgr) refresloop(ctx context.Context) {
+	t := time.NewTicker(lcm.refreshInterval)
+	defer t.Stop()
+	for {
 		select {
 		case <-ctx.Done():
-			logEntry.Error("getServer timeout advance")
-			return r, nil
+			return
+		case <-t.C:
+			lcm.LoadReporterResList, _ = lcm.getServers(ctx, lcm.serviceAddrs)
+		}
+	}
+}
+
+func (lcm *LoadClientMgr) getServers(ctx context.Context, serviceAddrs []string) (r serversResult, err error) {
+	logEntry := logrus.WithFields(logrus.Fields{
+		"func_name":    "getServers",
+		"serviceAddrs": serviceAddrs,
+	})
+	if serviceAddrs == nil || len(serviceAddrs) == 0 {
+		return nil, nil
+	}
+	r = make(map[string]*serverpb.LoadReporterResponse)
+	LoadResultChs := make([]<-chan *LoadResult, len(serviceAddrs))
+	ctx, cancel := context.WithTimeout(ctx, lcm.getServerTimeout)
+	defer cancel()
+	for i := range serviceAddrs {
+		addr := serviceAddrs[i]
+		var lc *LoadClient
+		v, ok := lcm.LoadClientList.Load(addr)
+		if ok {
+			lc = v.(*LoadClient)
+		} else {
+			lc, err = NewLoadClient(ctx, addr)
+			if err != nil {
+				return nil, err
+			}
+			lcm.LoadClientList.Store(addr, lc)
+		}
+
+		LoadResultChs[i] = lcm.getServer(ctx, lc)
+
+		select {
+		case <-ctx.Done():
+			if ctx.Err() == context.Canceled {
+				logEntry.Info("getServers canceled")
+			} else if ctx.Err() == context.DeadlineExceeded {
+				logEntry.Error("getServer timeout advance", ctx.Err())
+			}
+			return r, ctx.Err()
 		default:
 		}
 	}
-	if isWait {
-		wg := sync.WaitGroup{}
-
-		for i := range LoadResultChs {
-			loadResultCh := LoadResultChs[i]
-			go func(lr <-chan *LoadResult) {
-				wg.Add(1)
-				defer wg.Done()
-				select {
-				case <-ctx.Done():
-					logEntry.Infoln(" ", ctx.Err())
-					return
-				case loadResult := <-lr:
-					if loadResult.Error == nil {
-						r[loadResult.Addr] = loadResult.Response
-					}
-				}
-			}(loadResultCh)
-		}
-		wg.Wait()
+	// 获取所有结果，直到取完。或者 ctx.Done()返回 超时退出等情况。
+	for lr := range lcm.funIn(ctx, LoadResultChs...) {
+		r[lr.Addr] = lr.Response
 	}
 
 	return
 }
 
-func (lcm *LoadClientMgr) DeleteCache(serviceAddr string) {
-	//delete lcm.LoadClientList
-	//delete lcm.LoadReporterResList
-	lcm.LoadReporterResList.Delete(serviceAddr)
-	lcm.LoadClientList.Delete(serviceAddr)
+// 扇入模式
+func (lcm *LoadClientMgr) funIn(ctx context.Context, in ...<-chan *LoadResult) <-chan *LoadResult {
+	wg := sync.WaitGroup{}
+	out := make(chan *LoadResult)
+	multiplex := func(c <-chan *LoadResult) {
+		defer wg.Done()
+		for i := range c {
+			select {
+			case <-ctx.Done():
+				return
+			case out <- i:
+			}
+		}
+	}
+
+	// 读取值
+	for _, c := range in {
+		wg.Add(1)
+		go multiplex(c)
+	}
+
+	// 当所有值获取完后 关闭 channle
+	go func() {
+		wg.Wait()
+		close(out)
+	}()
+
+	return out
+}
+
+func (lcm *LoadClientMgr) Stop() {
+	lcm.cancel()
 }
